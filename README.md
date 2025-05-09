@@ -17,5 +17,5 @@ O repositório contém o código que controla o funcionamento do robô, permitin
 #### Controle de Movimento: código para gerenciar velocidade e direção dos motores
 #### Processamento de Sensores de Refletância: Lógica de leitura dos sensores de refletância para o seguimento correto do percurso
 #### Prococessamento dos Sensores ultrasônicos: desempenha um papel crucial na navegação e detecção de obstáculos.
-#### Manipulação de Objetos: Rotinas para operação eficiente da garra na coleta das bolinhas
+#### Manipulação da Garra: operação eficiente da garra na coleta das bolinhas
 #### Otimização e Ajustes: Melhorias constantes para garantir desempenho constante
