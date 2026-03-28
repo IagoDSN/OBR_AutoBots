@@ -1,12 +1,13 @@
-# AutoBots – OBR 2025
+# AutoBots – OBR 2025 e OBR 2026
 
 ## Sobre a Equipe
 A equipe AutoBots, vinculada ao Instituto Federal do Sul de Minas – Campus Machado, é composta por seis membros. O time se dedica à pesquisa, desenvolvimento e aprimoramento de sistemas autônomos aplicados à competição nacional da Olimpíada Brasileira de Robótica (OBR).
 
 ## Integrantes
-#### Alunos: Davi Vinagre, Iago Nunes, Gustavo Porto e Tiago Masaro
+#### Alunos: Davi Vinagre, Iago Nunes, Gustavo Porto e Marcos Sepini
 #### Professor Coach: Matheus Monteiro – responsável pela orientação estratégica e suporte técnico-acadêmico
 #### Professor Responsável: Matheus Franco
+#### Ex membros: Tiago Masaro
 
 [![Instagram](https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white)](https://www.instagram.com/autobots_obr/)
 
