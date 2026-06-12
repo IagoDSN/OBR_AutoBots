@@ -1,0 +1,7 @@
+Ultrasônico:
+TRIG → GPIO 5
+ECHO → GPIO 6 (passando por divisor de tensão se for um HC-SR04)
+GND → qualquer pino GND
+VCC → 5 V
+
+PonteH:
