@@ -5,3 +5,11 @@ GND → qualquer pino GND
 VCC → 5 V
 
 PonteH:
+Motor A (lado esquerdo)
+IN1 → GPIO 17
+IN2 → GPIO 27
+ENA (PWM/velocidade) → GPIO 18
+
+IN3 → GPIO 22
+IN4 → GPIO 23
+ENB (PWM/velocidade) → GPIO 19
