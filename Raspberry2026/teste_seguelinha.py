@@ -8,48 +8,52 @@ import RPi.GPIO as GPIO
 # --- CONFIGURAÇÃO DOS MOTORES (GPIO) ---
 GPIO.setmode(GPIO.BOARD)
 
-GPIO.setup(38, GPIO.OUT)
-GPIO.setup(40, GPIO.OUT)
+# Pinos de saída para a ponte H (ajuste conforme seu esquema elétrico)
+GPIO.setup(38, GPIO.OUT) # Roda Esquerda
+GPIO.setup(40, GPIO.OUT) # Roda Direita
 
+# Iniciando o PWM em 50Hz (frequência comum para motores DC via ponte H)
 pwm_esquerda = GPIO.PWM(38, 50)
 pwm_direita = GPIO.PWM(40, 50)
 pwm_esquerda.start(0)
 pwm_direita.start(0)
 
-# --- CONFIGURAÇÃO DA CÂMERA (OTIMIZADA PARA FPS) ---
+# --- CONFIGURAÇÃO DA CÂMERA ---
 camera = PiCamera()
-# Resolução reduzida pela metade para processamento ultra-rápido
 camera.resolution = (320, 240) 
-# Força a câmera a enviar até 40 quadros por segundo (o padrão é ~30)
 camera.framerate = 40 
 camera.rotation = 180
 rawCapture = PiRGBArray(camera, size=(320, 240))
 time.sleep(0.1)
 
-# --- VARIÁVEIS DE CONTROLE E HISTÓRICO ---
-x_last = 160  # Metade de 320
-y_last = 120  # Metade de 240
+# --- VARIÁVEIS DE HISTÓRICO ---
+x_last = 160  
+y_last = 120  
 
-# Constantes do Controle PD
-Kp = 0.15          
-Kd = 0.08           
-velocidade_base = 40 
+# --- CONSTANTES DO PID ---
+# DICA: Ajuste o Kp primeiro. Quando ficar razoável, ajuste o Kd para parar de tremer.
+# O Ki deve ser sempre MUITO pequeno.
+Kp = 0.15          # Proporcional (Força da curva)
+Ki = 0.001         # Integral (Correção de pequenos desvios acumulados)
+Kd = 0.08          # Derivativo (Suavidade e amortecimento)
+
+velocidade_base = 40 # Velocidade do robô em linha reta (0 a 100)
+
+# Variáveis para armazenar o passado do PID
 last_error = 0
+integral = 0
 
 # --- LOOP PRINCIPAL ---
 for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):    
     image = frame.array
     
-    # 1. OTIMIZAÇÃO ROI: Agora cortamos da linha 120 até 240 (metade inferior da nova resolução)
     roi = image[120:240, 0:320]
     
-    # 2. IMUNIDADE À LUZ (HSV)
     hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
     lower_black = np.array([0, 0, 0])
     upper_black = np.array([180, 255, 65]) 
     Blackline = cv2.inRange(hsv, lower_black, upper_black)
     
-    # 3. FILTRAGEM
     kernel = np.ones((5,5), np.uint8)
     Blackline = cv2.erode(Blackline, kernel, iterations=2)
     Blackline = cv2.dilate(Blackline, kernel, iterations=4)
@@ -70,7 +74,6 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
                 box = cv2.boxPoints(blackbox)
                 (x_box, y_box) = box[0]
                 
-                # A altura da ROI agora é 120, então testamos se passou de 118
                 if y_box > 118:
                     off_bottom += 1
                 canditates.append((y_box, con_num, x_min, y_min))
@@ -93,48 +96,51 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
         x_last = x_min
         y_last = y_min
         
-        if ang < -45:
-            ang = 90 + ang
-        if w_min < h_min and ang > 0:  
-            ang = (90 - ang) * -1
-        if w_min > h_min and ang < 0:
-            ang = 90 + ang  
-            
-        # --- CÁLCULO DO ERRO (AJUSTADO PARA A NOVA RESOLUÇÃO) ---
-        setpoint = 160 # O centro exato da tela de 320px
+        # --- CÁLCULO DO ERRO ---
+        setpoint = 160 
         error = int(x_min - setpoint) 
-        ang = int(ang)     
         
-        # Algoritmo PD
-        derivative = error - last_error
-        correcao = (Kp * error) + (Kd * derivative)
-        last_error = error
+        # --- ALGORITMO PID COMPLETO ---
+        integral = integral + error # Acumula o erro ao longo do tempo
         
+        # Proteção contra "Windup" (evita que o Integral cresça infinitamente e enlouqueça o robô)
+        if integral > 1000: integral = 1000
+        if integral < -1000: integral = -1000
+            
+        derivative = error - last_error # Calcula a taxa de variação
+        
+        # A Mágica do PID: junta as 3 partes para calcular a correção ideal
+        correcao = (Kp * error) + (Ki * integral) + (Kd * derivative)
+        
+        last_error = error # Atualiza a memória para o próximo frame
+        
+        # --- APLICA O PID NOS MOTORES ---
         vel_esquerda = velocidade_base + correcao
         vel_direita = velocidade_base - correcao
         
+        # Limita a velocidade entre 0 e 100% (Duty Cycle do PWM não pode passar de 100)
         vel_esquerda = max(0, min(100, vel_esquerda))
         vel_direita = max(0, min(100, vel_direita))
         
+        # ENVIA O SINAL FÍSICO PARA A PONTE H (Motores giram aqui!)
         pwm_esquerda.ChangeDutyCycle(vel_esquerda)
         pwm_direita.ChangeDutyCycle(vel_direita)
         
         # --- DESENHOS EM TELA ---
         box = cv2.boxPoints(blackbox)
         box = np.int0(box)
-        # Compensa o corte (ROI) de 120 pixels para desenhar no lugar certo
         box[:, 1] += 120 
         
         cv2.drawContours(image, [box], 0, (0, 0, 255), 2) 
-        
-        # Textos e linhas escalados para caberem na tela menor
-        cv2.putText(image, f"Angulo: {ang}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
-        cv2.putText(image, f"Erro: {error}", (10, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        cv2.putText(image, f"Erro: {error}", (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+        cv2.putText(image, f"PID Correcao: {int(correcao)}", (10, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
         cv2.putText(image, f"M_Esq: {int(vel_esquerda)}% M_Dir: {int(vel_direita)}%", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
         cv2.line(image, (int(x_min), 130), (int(x_min), 170), (255, 0, 0), 2)
     else:
+        # Se não achar a linha preta, desliga os motores para não bater
         pwm_esquerda.ChangeDutyCycle(0)
         pwm_direita.ChangeDutyCycle(0)
+        integral = 0 # Reseta o integral se perder a linha
 
     cv2.imshow("orginal with line", image)
     rawCapture.truncate(0)
