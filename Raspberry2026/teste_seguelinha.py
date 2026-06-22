@@ -160,8 +160,8 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
         cv2.line(image, (int(x_min), 130), (int(x_min), 170), (255, 0, 0), 2)
     else:
         # Se não achar a linha preta, desliga os motores para não bater
-        pwm_esquerda.ChangeDutyCycle(0)
-        pwm_direita.ChangeDutyCycle(0)
+        pwm_esquerda.ChangeDutyCycle(40)
+        pwm_direita.ChangeDutyCycle(40)
         integral = 0 # Reseta o integral se perder a linha
 
     cv2.imshow("orginal with line", image)
