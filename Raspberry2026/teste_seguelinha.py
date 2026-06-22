@@ -7,16 +7,38 @@ import RPi.GPIO as GPIO
 
 # --- CONFIGURAÇÃO DOS MOTORES (GPIO) ---
 GPIO.setmode(GPIO.BOARD)
+GPIO.setmode(GPIO.BCM)
 
-# Pinos de saída para a ponte H (ajuste conforme seu esquema elétrico)
-GPIO.setup(38, GPIO.OUT) # Roda Esquerda
-GPIO.setup(40, GPIO.OUT) # Roda Direita
+# --- CONFIGURAÇÃO DOS PINOS ---
 
-# Iniciando o PWM em 50Hz (frequência comum para motores DC via ponte H)
-pwm_esquerda = GPIO.PWM(38, 50)
-pwm_direita = GPIO.PWM(40, 50)
+# Motor A (Lado Esquerdo)
+IN1 = 17
+IN2 = 27
+ENA = 18
+
+# Motor B (Lado Direito)
+IN3 = 22
+IN4 = 23
+ENB = 19
+
+# Configurando todos os pinos como SAÍDA (OUT)
+GPIO.setup(IN1, GPIO.OUT)
+GPIO.setup(IN2, GPIO.OUT)
+GPIO.setup(ENA, GPIO.OUT)
+
+GPIO.setup(IN3, GPIO.OUT)
+GPIO.setup(IN4, GPIO.OUT)
+GPIO.setup(ENB, GPIO.OUT)
+
+# --- INICIALIZANDO O PWM ---
+# O PWM agora é aplicado nos pinos de Enable (ENA e ENB) para controlar a velocidade
+pwm_esquerda = GPIO.PWM(ENA, 50)  # Frequência de 50Hz
+pwm_direita = GPIO.PWM(ENB, 50)   # Frequência de 50Hz
+
+# Inicia o PWM com 0% de velocidade (parado)
 pwm_esquerda.start(0)
 pwm_direita.start(0)
+
 
 # --- CONFIGURAÇÃO DA CÂMERA ---
 camera = PiCamera()
