@@ -79,8 +79,39 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
     kernel = np.ones((5,5), np.uint8)
     Blackline = cv2.erode(Blackline, kernel, iterations=2)# provavelmente vai abaixar ou aumentar
     Blackline = cv2.dilate(Blackline, kernel, iterations=4)# provavelmente vai abaixar ou aumentar
+    #OUTRO POSSIVEL:===========================================================================================================
+    #img_blk, contours_blk, hierarchy_blk = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
-    img_blk, contours_blk, hierarchy_blk = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    contours_blk_len = len(contours_blk)
+    
+    if contours_blk_len > 0:
+        if contours_blk_len == 1:
+            # Se só tem um contorno, escolhe ele mesmo
+            blackbox = cv2.minAreaRect(contours_blk[0])
+        else:
+            # Se houver múltiplos contornos, vamos descobrir qual está mais perto do centro
+            canditates = []
+            setpoint_centro = 160 # Centro horizontal da tela (320 / 2)
+            
+            for con_num in range(contours_blk_len):
+                blackbox = cv2.minAreaRect(contours_blk[con_num])
+                (x_min, y_min), (w_min, h_min), ang = blackbox
+                
+                # Calcula a distância absoluta do centro horizontal da linha até o centro da tela
+                distancia_do_centro = abs(x_min - setpoint_centro)
+                
+                # Guarda a distância e o número do contorno correspondente
+                canditates.append((distancia_do_centro, con_num))
+            
+            # Ordena a lista. O Python ordena pelo primeiro elemento da tupla (distancia_do_centro).
+            # O menor valor (mais perto do centro/zero) vai ficar no topo (índice 0).
+            canditates = sorted(canditates)
+            
+            # Pega o contorno vencedor (índice 0, elemento 1 que é o con_num)
+            vencedor_con_num = canditates[0][1]
+            blackbox = cv2.minAreaRect(contours_blk[vencedor_con_num])
+    #========================================================================================================================
+    img_blk, contours_blk, hierarchy_blk = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)##
     
     contours_blk_len = len(contours_blk)
     
