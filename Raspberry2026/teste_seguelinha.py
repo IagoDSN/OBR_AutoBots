@@ -77,8 +77,8 @@ for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=
     Blackline = cv2.inRange(hsv, lower_black, upper_black)
     
     kernel = np.ones((5,5), np.uint8)
-    Blackline = cv2.erode(Blackline, kernel, iterations=2)
-    Blackline = cv2.dilate(Blackline, kernel, iterations=4)
+    Blackline = cv2.erode(Blackline, kernel, iterations=2)# provavelmente vai abaixar ou aumentar
+    Blackline = cv2.dilate(Blackline, kernel, iterations=4)# provavelmente vai abaixar ou aumentar
     
     img_blk, contours_blk, hierarchy_blk = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     
