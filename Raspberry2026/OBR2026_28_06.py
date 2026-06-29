@@ -40,17 +40,21 @@ DISTANCIA_OBSTACULO = 6.0
 GPIO.output(TRIG, GPIO.LOW)
 
 # Inicialização da Câmera
+LARGURA = 320
+ALTURA = 200
+CENTRO_X = LARGURA // 2
+
 camera = PiCamera()
-camera.resolution = (320, 200)
+camera.resolution = (LARGURA, ALTURA)
 camera.rotation = 180 
-rawCapture = PiRGBArray(camera, size=(320, 200))
+rawCapture = PiRGBArray(camera, size=(LARGURA, ALTURA))
 time.sleep(0.1)
 
 # Variáveis de controle e ganho
-x_last = 160
-y_last = 100
+x_last = CENTRO_X
+y_last = ALTURA // 2
 kp = 0.75
-ap = 1  
+ap = 1.0  
 vel_base = 60
 obs_perto = 20
 obs_longe = 60
@@ -58,6 +62,18 @@ lado = 1 # 1 = esquerda, 0 = direita
 
 # Kernel global para morfologia matemática
 kernel = np.ones((3, 3), np.uint8)
+
+# Limites HSV globais
+HSV_PRETO_BAIXO = np.array([0, 0, 0])
+HSV_PRETO_ALTO  = np.array([75, 75, 75])
+
+HSV_VERDE_BAIXO = np.array([35, 65, 50])
+HSV_VERDE_ALTO  = np.array([85, 200, 200])
+
+HSV_VERMELHO_BAIXO1 = np.array([0, 100, 100])
+HSV_VERMELHO_ALTO1  = np.array([10, 255, 255])
+HSV_VERMELHO_BAIXO2 = np.array([160, 100, 100])
+HSV_VERMELHO_ALTO2  = np.array([180, 255, 255])
 
 
 def motores_frente():
@@ -115,16 +131,18 @@ def obs_dir():
     GPIO.output(IN4, GPIO.LOW)
     pwm_esq.ChangeDutyCycle(obs_perto)
     pwm_dir.ChangeDutyCycle(obs_longe)
+
 def encontrar_linha():
     for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
         img_atual = frame.array
-        Blackline = cv2.inRange(hsv, (0, 0, 0), (75, 75, 75))
-        contours_blk, _ = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        hsv = cv2.cvtColor(img_atual, cv2.COLOR_BGR2HSV)
+        Blackline = cv2.inRange(hsv, HSV_PRETO_BAIXO, HSV_PRETO_ALTO)
+        contours_blk, _ = cv2.findContours(Blackline, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         if len(contours_blk) > 0:
             blackbox = cv2.minAreaRect(contours_blk[0])
             (x_min, _), _, _ = blackbox
-            erro = int(x_min - 160)
+            erro = int(x_min - CENTRO_X)
             if abs(erro) < 5:
                 rawCapture.truncate(0)
                 motores_frente()
@@ -170,7 +188,7 @@ def ler_distancia():
     timeout = pulso_inicio
     while GPIO.input(ECHO) == 0:
         pulso_inicio = time.time()
-        if pulso_inicio - timeout > 0.02: # Segurança para não travar o loop
+        if pulso_inicio - timeout > 0.02: 
             return 999.0
             
     pulso_fim = time.time()
@@ -183,80 +201,63 @@ def ler_distancia():
     duracao_pulso = pulso_fim - pulso_inicio
     distancia = duracao_pulso * 17150
     return round(distancia, 1)
-def obs_dir():
-    for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
+
+def desvio_obs(lado_desvio=1):
+    motores_tras()
+    time.sleep(0.4)
+    
+    if lado_desvio == 1:
+        motores_virar_esq()
+        time.sleep(1.6)
+        
+        # Monitora o lado esquerdo
+        for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
             img_atual = frame.array
-            Blackline = cv2.inRange(img_atual, (0, 0, 0), (75, 75, 75))
-            contours_blk, _ = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            hsv = cv2.cvtColor(img_atual, cv2.COLOR_BGR2HSV)
+            Blackline = cv2.inRange(hsv, HSV_PRETO_BAIXO, HSV_PRETO_ALTO)
+            contours_blk, _ = cv2.findContours(Blackline, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if len(contours_blk) > 0:
                 break
             rawCapture.truncate(0)
+            obs_esq()
             
-        motores_frente()
-        time.sleep(0.5)
-        motores_virar_esq()
+        time.sleep(1.0)
         
+        # Monitora o lado direito
         for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
             img_atual = frame.array
-            Blackline = cv2.inRange(hsv, (0, 0, 0), (75, 75, 75))
+            hsv = cv2.cvtColor(img_atual, cv2.COLOR_BGR2HSV)
+            Blackline = cv2.inRange(hsv, HSV_PRETO_BAIXO, HSV_PRETO_ALTO)
             Blackline = cv2.erode(Blackline, kernel, iterations=2)
-
-            contours_blk, _ = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            contours_blk_len = len(contours_blk)
+            contours_blk, _ = cv2.findContours(Blackline, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if len(contours_blk) > 0:
                 blackbox = cv2.minAreaRect(contours_blk[0])
                 (x_min, _), _, _ = blackbox
-                erro = int(x_min - 160)
+                erro = int(x_min - CENTRO_X)
                 if abs(erro) < 5:
                     rawCapture.truncate(0)
                     motores_frente()
                     return True
             rawCapture.truncate(0)
-def obs_esq():
-    for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
-            img_atual = frame.array
-            blackline = cv2.ctvColor(
-            Blackline = cv2.inRange(img_atual, (0, 0, 0), (75, 75, 75))
-            contours_blk, _ = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            if len(contours_blk) > 0:
-                break
-            rawCapture.truncate(0)
-            
-        motores_frente()
-        time.sleep(0.5)
-        motores_virar_dir()
-        
+            obs_dir()
+    else:
+        # Lógica simplificada para o outro lado
         for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
             img_atual = frame.array
-            Blackline = cv2.inRange(hsv, (0, 0, 0), (75, 75, 75))
+            hsv = cv2.cvtColor(img_atual, cv2.COLOR_BGR2HSV)
+            Blackline = cv2.inRange(hsv, HSV_PRETO_BAIXO, HSV_PRETO_ALTO)
             Blackline = cv2.erode(Blackline, kernel, iterations=2)
-
-            contours_blk, _ = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            contours_blk_len = len(contours_blk)
+            contours_blk, _ = cv2.findContours(Blackline, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             if len(contours_blk) > 0:
                 blackbox = cv2.minAreaRect(contours_blk[0])
                 (x_min, _), _, _ = blackbox
-                erro = int(x_min - 160)
+                erro = int(x_min - CENTRO_X)
                 if abs(erro) < 20:
                     rawCapture.truncate(0)
                     motores_frente()
                     return True
             rawCapture.truncate(0)
-
-def desvio_obs(lado=1): # Lado padrão definido como 1 caso não seja enviado
-    motores_tras()
-    time.sleep(0.4)
-    
-    if lado == 1:
-        motores_virar_esq()
-        time.sleep(1.6)
-        obs_esq()
-        time.sleep(1.0)
-        
-        obs_dir()
-            
-    else:
-        obs_esq()
+            obs_esq()
 
 def seguir_linha():
     global x_last, y_last
@@ -264,43 +265,45 @@ def seguir_linha():
     
     for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
         image = frame.array
-        hsv = cv2.cvtcolor(image, cv2.COLOR_BGR2HSV)
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         
         # Verificação do sensor ultrassônico primeiro
         distancia_atual = ler_distancia()
         if distancia_atual <= DISTANCIA_OBSTACULO:
-            desvio_obs() # Altere a lógica do lado se necessário
+            desvio_obs(lado) 
             rawCapture.truncate(0)
             continue
         
+        # Detecção do Vermelho com máscara dupla unificada
         roi_vermelho = hsv[0:200, 100:220]
-        vermelho = cv2.inRange(roi_vermelho, (0, 0, 120), (100, 100, 255))
-        vermelho_sign, _ = cv2.findContours(vermelho.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        v_mask1 = cv2.inRange(roi_vermelho, HSV_VERMELHO_BAIXO1, HSV_VERMELHO_ALTO1)
+        v_mask2 = cv2.inRange(roi_vermelho, HSV_VERMELHO_BAIXO2, HSV_VERMELHO_ALTO2)
+        vermelho = cv2.bitwise_or(v_mask1, v_mask2)
         
+        vermelho_sign, _ = cv2.findContours(vermelho, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if len(vermelho_sign) > 0:
             motores_parar()
             rawCapture.truncate(0)
             break
         
-        # 1. Monitores de Verde focados BEM EMBAIXO (Y de 150 a 195)
+        # Monitores de Verde focados embaixo
         parte_inferior_esq = hsv[150:195, 0:110]
         parte_inferior_dir = hsv[150:195, 210:320]
         
-        green_esq = cv2.inRange(parte_inferior_esq, (0, 65, 0), (100, 200, 100))
-        green_dir = cv2.inRange(parte_inferior_dir, (0, 65, 0), (100, 200, 100))
+        green_esq = cv2.inRange(parte_inferior_esq, HSV_VERDE_BAIXO, HSV_VERDE_ALTO)
+        green_dir = cv2.inRange(parte_inferior_dir, HSV_VERDE_BAIXO, HSV_VERDE_ALTO)
         
         green_esq = cv2.erode(green_esq, kernel, iterations=2)
         green_dir = cv2.erode(green_dir, kernel, iterations=2)
         
-        contornos_esq, _ = cv2.findContours(green_esq.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        contornos_dir, _ = cv2.findContours(green_dir.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contornos_esq, _ = cv2.findContours(green_esq, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contornos_dir, _ = cv2.findContours(green_dir, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        # 2. Processamento do Verde (Se estiver embaixo)
         if len(contornos_esq) > 0 and len(contornos_dir) > 0:
             parte_inferior_centro = hsv[150:195, 115:205]
-            green_centro = cv2.inRange(parte_inferior_centro, (0, 65, 0), (100, 200, 100))
+            green_centro = cv2.inRange(parte_inferior_centro, HSV_VERDE_BAIXO, HSV_VERDE_ALTO)
             green_centro = cv2.erode(green_centro, kernel, iterations=2)
-            contornos_centro, _ = cv2.findContours(green_centro.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            contornos_centro, _ = cv2.findContours(green_centro, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             
             if len(contornos_centro) == 0:
                 duplo_verde()
@@ -322,9 +325,9 @@ def seguir_linha():
             rawCapture.truncate(0)
             continue
 
-        # 3. Linha preta horizontal pura OU com verde acima dela -> Segue Reto
+        # Linha preta horizontal pura (Gatilho)
         regiao_gatilho = hsv[120:160, 30:290]
-        Preto_gatilho = cv2.inRange(regiao_gatilho, (0, 0, 0), (75, 75, 75))
+        Preto_gatilho = cv2.inRange(regiao_gatilho, HSV_PRETO_BAIXO, HSV_PRETO_ALTO)
         pixels_pretos = np.sum(Preto_gatilho == 255)
         
         if pixels_pretos > 4000: 
@@ -333,11 +336,11 @@ def seguir_linha():
             rawCapture.truncate(0)
             continue
 
-        # 4. PID Linha Preta Comum
-        Blackline = cv2.inRange(hsv, (0, 0, 0), (75, 75, 75))
+        # PID Linha Preta Comum (Lógica contínua e estável aplicada)
+        Blackline = cv2.inRange(hsv, HSV_PRETO_BAIXO, HSV_PRETO_ALTO)
         Blackline = cv2.erode(Blackline, kernel, iterations=2)
 
-        contours_blk, _ = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        contours_blk, _ = cv2.findContours(Blackline, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours_blk_len = len(contours_blk)
         
         if contours_blk_len > 0:
@@ -364,28 +367,20 @@ def seguir_linha():
             if w_min > h_min and ang < 0:
                 ang = 90 + ang
                 
-            setpoint = 160                
-            error = int(x_min - setpoint) 
+            error = int(x_min - CENTRO_X)
             ang = int(ang)                
-            if erro != 0:
-                calculo_steering = int((error * kp) + (ang * ap))
             
-                vel_esq = vel_base + calculo_steering
-                vel_dir = vel_base - calculo_steering
-            
-                vel_esq = max(0, min(100, vel_esq))
-                vel_dir = max(0, min(100, vel_dir))
-            
-                pwm_esq.ChangeDutyCycle(vel_esq)
-                pwm_dir.ChangeDutyCycle(vel_dir)
-            else:
-                :
-            pwm_esq.ChangeDutyCycle(vel_base - 10)
-            pwm_dir.ChangeDutyCycle(vel_base - 10)
-
-        rawCapture.truncate(0)
+            # Controle PD contínuo unificado (Lógica otimizada e livre de travamentos)
+            calculo_steering = int((error * kp) + (ang * ap))
         
+            vel_esq = vel_base + calculo_steering
+            vel_dir = vel_base - calculo_steering
         
+            vel_esq = max(0, min(100, vel_esq))
+            vel_dir = max(0, min(100, vel_dir))
+        
+            pwm_esq.ChangeDutyCycle(vel_esq)
+            pwm_dir.ChangeDutyCycle(vel_dir)
         else:
             pwm_esq.ChangeDutyCycle(vel_base - 10)
             pwm_dir.ChangeDutyCycle(vel_base - 10)
@@ -396,7 +391,6 @@ def seguir_linha():
             motores_parar()
             break
 
-# Executa o loop principal de forma protegida
 try:
     seguir_linha()
 except KeyboardInterrupt:
