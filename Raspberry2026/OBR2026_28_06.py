@@ -198,8 +198,11 @@ def obs_dir():
         
         for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
             img_atual = frame.array
-            Blackline = cv2.inRange(img_atual, (0, 0, 0), (75, 75, 75))
+            Blackline = cv2.inRange(hsv, (0, 0, 0), (75, 75, 75))
+            Blackline = cv2.erode(Blackline, kernel, iterations=2)
+
             contours_blk, _ = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            contours_blk_len = len(contours_blk)
             if len(contours_blk) > 0:
                 blackbox = cv2.minAreaRect(contours_blk[0])
                 (x_min, _), _, _ = blackbox
@@ -212,6 +215,7 @@ def obs_dir():
 def obs_esq():
     for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
             img_atual = frame.array
+            blackline = cv2.ctvColor(
             Blackline = cv2.inRange(img_atual, (0, 0, 0), (75, 75, 75))
             contours_blk, _ = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
             if len(contours_blk) > 0:
@@ -224,8 +228,11 @@ def obs_esq():
         
         for frame in camera.capture_continuous(rawCapture, format="bgr", use_video_port=True):
             img_atual = frame.array
-            Blackline = cv2.inRange(img_atual, (0, 0, 0), (75, 75, 75))
+            Blackline = cv2.inRange(hsv, (0, 0, 0), (75, 75, 75))
+            Blackline = cv2.erode(Blackline, kernel, iterations=2)
+
             contours_blk, _ = cv2.findContours(Blackline.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+            contours_blk_len = len(contours_blk)
             if len(contours_blk) > 0:
                 blackbox = cv2.minAreaRect(contours_blk[0])
                 (x_min, _), _, _ = blackbox
