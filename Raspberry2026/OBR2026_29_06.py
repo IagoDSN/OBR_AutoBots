@@ -15,6 +15,209 @@ Como o gpiozero.Motor funciona:
   motor.stop()           – para o motor imediatamente (corta o sinal PWM)
 """
 
+
+# ╔══════════════════════════════════════════════════════════════════════════════════════════╗
+# ║                                                                                          ║
+# ║   ███████╗███████╗ ██████╗ ██╗   ██╗███████╗    ██╗     ██╗███╗   ██╗██╗  ██╗█████╗    ║
+# ║   ██╔════╝██╔════╝██╔════╝ ██║   ██║██╔════╝    ██║     ██║████╗  ██║██║  ██║██╔══██╗  ║
+# ║   ███████╗█████╗  ██║  ███╗██║   ██║█████╗      ██║     ██║██╔██╗ ██║███████║███████║  ║
+# ║   ╚════██║██╔══╝  ██║   ██║██║   ██║██╔══╝      ██║     ██║██║╚██╗██║██╔══██║██╔══██║  ║
+# ║   ███████║███████╗╚██████╔╝╚██████╔╝███████╗    ███████╗██║██║ ╚████║██║  ██║██║  ██║  ║
+# ║   ╚══════╝╚══════╝ ╚═════╝  ╚═════╝ ╚══════╝    ╚══════╝╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═╝ ║
+# ║                                                                                          ║
+# ╠══════════════════════════════════════════════════════════════════════════════════════════╣
+# ║                                                                                          ║
+# ║  MÓDULO RESPONSÁVEL: control.py → control_loop()  +  lógica de visão da câmera 1        ║
+# ║  VARIÁVEIS RELEVANTES (mp_manager): line_angle, gap_angle, turn_dir, objective,         ║
+# ║                                     sensor_one..seven, rotation_y                       ║
+# ║                                                                                          ║
+# ╠══════════════════════════════════════════════════════════════════════════════════════════╣
+# ║                                                                                          ║
+# ║  O QUE É O SEGUE LINHA?                                                                 ║
+# ║  ─────────────────────                                                                  ║
+# ║  O robô possui uma câmera voltada para BAIXO (câmera 1 / top_camera na UI).             ║
+# ║  Ela captura o chão e detecta uma faixa preta sobre fundo branco.                       ║
+# ║  O algoritmo de visão binariza o frame (limiarização HSV ou simples threshold)          ║
+# ║  e encontra o "esqueleto" ou centroide da linha usando OpenCV.                          ║
+# ║  Com esse centroide, calcula-se o ângulo de desvio da linha em relação ao               ║
+# ║  centro da imagem — esse valor é armazenado em  line_angle.value.                       ║
+# ║                                                                                          ║
+# ║  COMO O ROBÔ SEGUE A LINHA?                                                             ║
+# ║  ───────────────────────────                                                            ║
+# ║  O control_loop() lê line_angle.value a cada iteração e aplica um controlador           ║
+# ║  proporcional (P) ou proporcional-derivativo (PD):                                      ║
+# ║                                                                                          ║
+# ║      erro         = line_angle.value  (0 = linha centrada)                              ║
+# ║      correção     = Kp * erro  +  Kd * (erro - erro_anterior)                           ║
+# ║      vel_esquerda = velocidade_base + correção                                           ║
+# ║      vel_direita  = velocidade_base - correção                                           ║
+# ║                                                                                          ║
+# ║  Se a linha desvia para a direita → erro positivo → motor esquerdo acelera,             ║
+# ║  motor direito desacelera → robô curva à direita para voltar à linha.                   ║
+# ║  O resultado é armazenado em turn_dir.value ("straight"/"left"/"right")                 ║
+# ║  e exibido na UI como seta (⇧ / ⇦ / ⇨).                                                ║
+# ║                                                                                          ║
+# ║  DETECÇÃO DE GAP (lacuna na linha):                                                     ║
+# ║  ────────────────────────────────                                                       ║
+# ║  Quando a câmera não encontra a linha por N frames consecutivos, o robô                 ║
+# ║  está numa intersecção, fim de linha ou área de evacuação.                              ║
+# ║  Nesse momento gap_angle.value registra o ângulo projetado para onde a                  ║
+# ║  linha deveria continuar, e o controle decide: virar, seguir reto ou parar.             ║
+# ║                                                                                          ║
+# ║  DETECÇÃO DE RAMPA (rotation_y):                                                        ║
+# ║  ─────────────────────────────                                                          ║
+# ║  O IMU (sensor_y = pitch) indica se o robô está inclinado para frente/trás.             ║
+# ║  Se pitch > limiar → ramp_up (subindo). Se pitch < -limiar → ramp_down (descendo).      ║
+# ║  A velocidade dos motores é ajustada para compensar (mais força na subida).             ║
+# ║  Isso é exibido na UI como "u" (up), "d" (down) ou "n" (nenhuma inclinação).            ║
+# ║                                                                                          ║
+# ║  MARCADORES COLORIDOS (verde / vermelho):                                               ║
+# ║  ─────────────────────────────────────                                                  ║
+# ║  Quadrados coloridos no chão indicam pontos de evacuação ou viradas especiais.          ║
+# ║  A câmera da linha (câmera 1) também detecta esses marcadores via thresholds HSV.       ║
+# ║  Quando detectado: objective.value muda de "follow_line" para "evacuation_zone"         ║
+# ║  ou "turn_around", sinalizando ao control_loop para mudar de comportamento.             ║
+# ║                                                                                          ║
+# ║  FLUXO RESUMIDO DO SEGUE LINHA:                                                         ║
+# ║  ─────────────────────────────                                                          ║
+# ║                                                                                          ║
+# ║   [Câmera 1 captura frame]                                                              ║
+# ║          │                                                                               ║
+# ║          ▼                                                                               ║
+# ║   [Binarização HSV → encontra centroide da linha]                                       ║
+# ║          │                                                                               ║
+# ║          ▼                                                                               ║
+# ║   [Calcula line_angle → armazena em mp_manager]                                         ║
+# ║          │                                                                               ║
+# ║          ▼                                                                               ║
+# ║   [control_loop lê line_angle + sensores de distância]                                  ║
+# ║          │                                                                               ║
+# ║          ├── linha detectada → aplica PD → set_motors(vel_esq, vel_dir)                 ║
+# ║          │                                                                               ║
+# ║          ├── gap detectado   → usa gap_angle para projetar próxima direção               ║
+# ║          │                                                                               ║
+# ║          ├── marcador verde  → muda objective → inicia resgate de vítima                ║
+# ║          │                                                                               ║
+# ║          └── rampa detectada → ajusta velocidade base via rotation_y                    ║
+# ║                                                                                          ║
+# ╚══════════════════════════════════════════════════════════════════════════════════════════╝
+
+
+# ╔══════════════════════════════════════════════════════════════════════════════════════════╗
+# ║                                                                                          ║
+# ║  ██████╗ ███████╗███████╗ ██████╗ ██╗   ██╗███████╗    ██████╗ ███████╗                 ║
+# ║  ██╔══██╗██╔════╝██╔════╝██╔════╝ ██║   ██║██╔════╝    ██╔══██╗██╔════╝                 ║
+# ║  ██████╔╝█████╗  ███████╗██║  ███╗██║   ██║█████╗      ██║  ██║█████╗                   ║
+# ║  ██╔══██╗██╔══╝  ╚════██║██║   ██║██║   ██║██╔══╝      ██║  ██║██╔══╝                   ║
+# ║  ██║  ██║███████╗███████║╚██████╔╝╚██████╔╝███████╗    ██████╔╝███████╗                 ║
+# ║  ╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝  ╚═════╝ ╚══════╝    ╚═════╝ ╚══════╝                 ║
+# ║                                                                                          ║
+# ║  ██╗   ██╗██╗████████╗██╗███╗   ███╗ █████╗                                            ║
+# ║  ██║   ██║██║╚══██╔══╝██║████╗ ████║██╔══██╗                                           ║
+# ║  ██║   ██║██║   ██║   ██║██╔████╔██║███████║                                           ║
+# ║  ╚██╗ ██╔╝██║   ██║   ██║██║╚██╔╝██║██╔══██║                                           ║
+# ║   ╚████╔╝ ██║   ██║   ██║██║ ╚═╝ ██║██║  ██║                                           ║
+# ║    ╚═══╝  ╚═╝   ╚═╝   ╚═╝╚═╝     ╚═╝╚═╝  ╚═╝                                           ║
+# ║                                                                                          ║
+# ╠══════════════════════════════════════════════════════════════════════════════════════════╣
+# ║                                                                                          ║
+# ║  MÓDULO RESPONSÁVEL: control.py → control_loop()  +  lógica de visão da câmera 2        ║
+# ║  VARIÁVEIS RELEVANTES (mp_manager): objective, picked_up_alive_count,                   ║
+# ║                                     picked_up_dead_count, zone_start_time,              ║
+# ║                                     sensor_seven (garra), sensor_one..five              ║
+# ║                                                                                          ║
+# ╠══════════════════════════════════════════════════════════════════════════════════════════╣
+# ║                                                                                          ║
+# ║  O QUE É O RESGATE DE VÍTIMA?                                                           ║
+# ║  ─────────────────────────────                                                          ║
+# ║  Na competição (RoboCup Rescue Line), o robô deve encontrar "vítimas"                   ║
+# ║  dentro de uma ZONA DE EVACUAÇÃO (área delimitada fora da linha guia).                  ║
+# ║  As vítimas são objetos físicos (latas, bolas) classificadas em:                        ║
+# ║                                                                                          ║
+# ║      VIVA  → objeto prateado/brilhante (reflexo de luz, detected por LED)               ║
+# ║      MORTA → objeto preto/opaco (absorve luz, não reflete)                              ║
+# ║                                                                                          ║
+# ║  O robô deve:                                                                            ║
+# ║      1. Detectar e se aproximar da vítima usando os sensores e câmera da zona           ║
+# ║      2. Capturar a vítima com a GARRA (servo ou mecanismo de pinça)                     ║
+# ║      3. Classificar como viva ou morta                                                  ║
+# ║      4. Depositar a vítima na área correta (vivas: triângulo verde / mortas: vermelho)  ║
+# ║      5. Repetir até limpar a zona (máx 2 vítimas neste código)                         ║
+# ║                                                                                          ║
+# ║  COMO O ROBÔ ENTRA NA ZONA?                                                             ║
+# ║  ─────────────────────────                                                              ║
+# ║  Quando a câmera 1 (segue linha) detecta um MARCADOR VERDE DE ENTRADA,                 ║
+# ║  objective.value muda de "follow_line" → "evacuation_zone".                            ║
+# ║  O timer zone_start_time.value é iniciado (exibido na UI como segundo cronômetro).      ║
+# ║  O robô para de seguir a linha e começa o algoritmo de busca dentro da zona.            ║
+# ║                                                                                          ║
+# ║  COMO A VÍTIMA É DETECTADA?                                                             ║
+# ║  ──────────────────────────                                                             ║
+# ║  A câmera 2 (bottom_camera na UI) está voltada para FRENTE/BAIXO dentro da zona.       ║
+# ║  Ela procura por objetos escuros (mortos) ou brilhantes (vivos) usando:                 ║
+# ║      - Threshold HSV calibrado via botões na UI (z-g, z-r, l-bv etc.)                  ║
+# ║      - Validação com LED: vítima viva reflete o LED aceso → pixels brancos na imagem   ║
+# ║      - Validação sem LED: vítima morta não reflete → pixels escuros                    ║
+# ║  A calibração é feita em campo pelo operador usando os botões ✎ / ⎚ / ✓ da UI.         ║
+# ║                                                                                          ║
+# ║  COMO O ROBÔ CAPTURA A VÍTIMA?                                                          ║
+# ║  ─────────────────────────────                                                          ║
+# ║  sensor_seven.value = leitura do sensor na garra (distância até o objeto em mm).        ║
+# ║  Quando o sensor indica distância abaixo do limiar (objeto dentro da garra):            ║
+# ║      → O servo/garra fecha (comando enviado via serial ao Arduino)                      ║
+# ║      → O robô recua até a área de depósito correta                                      ║
+# ║      → Abre a garra para soltar a vítima                                                ║
+# ║      → Incrementa picked_up_alive_count.value OU picked_up_dead_count.value            ║
+# ║  Esses contadores são exibidos na UI como círculos no Canvas:                           ║
+# ║      Cinza claro (#BBBBBB) = vítima viva coletada                                       ║
+# ║      Preto       (Black)   = vítima morta coletada                                      ║
+# ║      Cinza escuro(#292929) = posição ainda não preenchida                               ║
+# ║                                                                                          ║
+# ║  ÁREAS DE DEPÓSITO:                                                                     ║
+# ║  ──────────────────                                                                     ║
+# ║  Dentro da zona há dois triângulos pintados no chão:                                    ║
+# ║      VERDE  → destino das vítimas VIVAS  (câmera 2 detecta via threshold "z-g")         ║
+# ║      VERMELHO → destino das vítimas MORTAS (câmera 2 detecta via threshold "z-r")       ║
+# ║  O robô navega dentro da zona usando os sensores laterais (sensor_three / sensor_four)  ║
+# ║  para evitar as paredes e encontrar os triângulos pelo chão.                            ║
+# ║                                                                                          ║
+# ║  COMO O ROBÔ SAI DA ZONA?                                                               ║
+# ║  ─────────────────────────                                                              ║
+# ║  Após depositar todas as vítimas (ou esgotar o tempo):                                  ║
+# ║      1. objective.value volta para "follow_line"                                         ║
+# ║      2. O robô navega de volta à entrada da zona (parede com gap)                       ║
+# ║      3. Encontra a linha preta novamente e retoma o segue linha                         ║
+# ║      4. O timer zone_start_time congela (o valor fica salvo na UI)                     ║
+# ║                                                                                          ║
+# ║  FLUXO RESUMIDO DO RESGATE DE VÍTIMA:                                                   ║
+# ║  ────────────────────────────────────                                                   ║
+# ║                                                                                          ║
+# ║   [Câmera 1 detecta marcador verde → objective = "evacuation_zone"]                     ║
+# ║          │                                                                               ║
+# ║          ▼                                                                               ║
+# ║   [Robô entra na zona → zone_start_time iniciado]                                       ║
+# ║          │                                                                               ║
+# ║          ▼                                                                               ║
+# ║   [Câmera 2 busca vítima → threshold HSV + validação LED]                               ║
+# ║          │                                                                               ║
+# ║          ├── achou vítima → aproxima usando sensor_five (frontal central)               ║
+# ║          │        │                                                                      ║
+# ║          │        ▼                                                                      ║
+# ║          │   [sensor_seven < limiar → garra fecha → capta vítima]                       ║
+# ║          │        │                                                                      ║
+# ║          │        ▼                                                                      ║
+# ║          │   [Classifica: viva→triângulo verde / morta→triângulo vermelho]               ║
+# ║          │        │                                                                      ║
+# ║          │        ▼                                                                      ║
+# ║          │   [Deposita → picked_up_alive/dead_count++ → círculo acende na UI]           ║
+# ║          │                                                                               ║
+# ║          ├── zona limpa ou timeout → objetivo = "follow_line"                           ║
+# ║          │                                                                               ║
+# ║          └── retorna à linha → segue linha retoma                                       ║
+# ║                                                                                          ║
+# ╚══════════════════════════════════════════════════════════════════════════════════════════╝
+
+
 # ─────────────────────────────────────────────────────────────────
 #  IMPORTAÇÕES PADRÃO DO PYTHON
 # ─────────────────────────────────────────────────────────────────
