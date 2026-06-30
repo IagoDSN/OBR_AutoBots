@@ -15,7 +15,7 @@ Este repositório contém o desenvolvimento do meu robô, incluindo hardware.
 | Plataforma | Raspberry OS |
 | Microcontrolador | Raspberry pi 5 |
 | Linguagem | Python |
-| Data de início | |
+| Data de início | 28/05/2026 |
 
 ---
 
@@ -23,7 +23,10 @@ Este repositório contém o desenvolvimento do meu robô, incluindo hardware.
 
 ## Eletrônica
 
-
+camera picamera x1
+sesores TOF x3
+bateria rasp 
+fitas led 
 
 # 💻 Software
 
