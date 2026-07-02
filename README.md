@@ -1,5 +1,16 @@
 # 🤖 AutoBots – OBR 2025 & 2026
 
+<div align="center">
+  
+![Status](https://img.shields.io/badge/Status-Em_desenvolvimento-red)
+![Agent](https://img.shields.io/badge/Robot-Autonomous-blueviolet?style=flat&logo=openai)
+![Licença](https://img.shields.io/github/license/IagoDSN/Nexus_IA?style=flat-square&color=important)
+[![Ultimo Update](https://img.shields.io/github/last-commit/IagoDSN/OBR_AutoBots?label=Ultimo%20Update&style=classic)](https://github.com/IagoDSN/OBR_AutoBots)
+
+</div>
+
+<img src="https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/aqua.png" width="100%">
+
 ## 🚀 Sobre a Equipe
 A **AutoBots**, vinculada ao Instituto Federal do Sul de Minas – Campus Machado, é formada por seis integrantes e atua no desenvolvimento de **sistemas robóticos autônomos** para a Olimpíada Brasileira de Robótica (OBR).
 
@@ -22,64 +33,32 @@ Nosso foco é projetar, programar e otimizar robôs capazes de executar tarefas 
 **📚 Professor Responsável**  
 - Matheus Franco  
 
-**🕓 Ex-integrante**  
-- Tiago Masaro  
-
 
 ## 📱 Redes
 
 [![Instagram](https://img.shields.io/badge/Instagram-AutoBots-E4405F?style=for-the-badge&logo=instagram&logoColor=white)](https://www.instagram.com/autobots_obr/)
 
 
-## 🏆 A Competição – OBR
+## 🏆 A Competição — Olimpíada Brasileira de Robótica (OBR)
 
-A **Olimpíada Brasileira de Robótica (OBR)** desafia equipes a desenvolverem robôs totalmente autônomos capazes de:
+<p align="center">
+  <img src="assets/pista.png" alt="Olimpíada Brasileira de Robótica" width="750"/>
+</p>
 
-- 🚗 Percorrer trajetos predefinidos  
-- 🧱 Superar obstáculos  
-- 🎯 Executar missões com precisão  
-- 🛟 Realizar operações de resgate  
+A **Olimpíada Brasileira de Robótica (OBR)** é uma das maiores competições de robótica educacional do Brasil. Na modalidade prática, as equipes desenvolvem robôs **totalmente autônomos**, capazes de navegar por ambientes que simulam situações reais de resgate, exigindo programação, eletrônica e engenharia mecânica.
 
----
+### Objetivos da prova
 
-## 💻 Sobre o Código
+| Desafio | Descrição |
+| :------ | :-------- |
+| 🚗 Navegação Autônoma | Seguir linhas e percorrer o percurso sem intervenção humana. |
+| 🧱 Obstáculos | Identificar e superar rampas, desníveis e barreiras. |
+| 🎯 Precisão | Tomar decisões e executar ações com alta confiabilidade. |
+| 🛟 Resgate | Localizar e transportar vítimas até a área segura. |
 
-Este repositório contém toda a lógica de controle responsável pelo funcionamento autônomo do robô durante a competição.
+> 💡 Cada temporada apresenta novos desafios, incentivando inovação, trabalho em equipe e aprimoramento contínuo.
 
-O desenvolvimento foi realizado utilizando o **Lego MINDSTORMS EV3 Home Edition**, seguindo princípios de **engenharia de software aplicada à robótica**.
-
----
-
-## ⚙️ Funcionalidades do Sistema
-
-### 🚗 Controle de Movimento
-Algoritmos otimizados para controle de velocidade e direção, garantindo deslocamento preciso e estável.
-
-### 📏 Sensores de Refletância
-Processamento de dados para **seguimento de linha eficiente**, mantendo o robô no percurso correto.
-
-### 📡 Sensores Ultrassônicos
-Detecção de obstáculos em tempo real, permitindo tomadas de decisão rápidas e seguras.
-
-### 🛟 Missão de Resgate
-Implementação de estratégias para:
-- localizar vítimas (bolinhas)
-- coletar
-- posicionar em áreas seguras
-
-### 🔧 Otimização Contínua
-Ajustes constantes no código e nos parâmetros para maximizar desempenho e eficiência.
-
----
-
-## 🧠 Tecnologias Utilizadas
-
-- 🤖 Lego Mindstorms EV3  
-- 🧩 Programação visual (EV3 Home Edition)  
-- 🔌 Sensores (refletância e ultrassônico)  
-- ⚙️ Lógica de controle e automação  
-
----
+<br>
 
 ## 🎯 Objetivo
 
