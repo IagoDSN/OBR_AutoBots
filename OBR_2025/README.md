@@ -1,90 +1,35 @@
-# 🤖 AutoBots – OBR 2025 & 2026
+# 🤖 LEGO EV3 — Temporada 2025
 
-## 🚀 Sobre a Equipe
-A **AutoBots**, vinculada ao Instituto Federal do Sul de Minas – Campus Machado, é formada por seis integrantes e atua no desenvolvimento de **sistemas robóticos autônomos** para a Olimpíada Brasileira de Robótica (OBR).
+Durante a temporada **2025** da **Olimpíada Brasileira de Robótica (OBR)**, nós utilizamos exclusivamente o **LEGO MINDSTORMS EV3** como plataforma de desenvolvimento do robô.
 
-Nosso foco é projetar, programar e otimizar robôs capazes de executar tarefas complexas de forma independente, unindo **hardware + software + estratégia**.
+## Estrutura do projeto
 
----
+Ao longo da temporada foram criadas diversas versões do programa para testes, ajustes e validação de estratégias. Entretanto, **a versão oficial utilizada nas competições é:**
 
-## 👥 Integrantes
+```text
+FinalLego.ev3
+```
 
-**👨‍💻 Alunos**  
-- Davi Vinagre  
-- Iago Nunes  
-- Gustavo Porto  
-- Marcos Sepini  
+Esse projeto contém toda a lógica empregada pela equipe durante a temporada, incluindo navegação, detecção de obstáculos, identificação de vítimas e demais comportamentos implementados para a competição.
 
-**🎓 Professor Coach**  
-- Matheus Monteiro  
-  _Orientação estratégica e suporte técnico-acadêmico_
+## Como executar
 
-**📚 Professor Responsável**  
-- Matheus Franco  
+1. Abra o software **LEGO MINDSTORMS EV3**.
+2. Abra o arquivo:
+   ```text
+   FinalLego.ev3
+   ```
+3. Conecte o bloco EV3 ao computador.
+4. Faça o download do programa.
+5. Execute o programa no robô.
 
-**🕓 Ex-integrante**  
-- Tiago Masaro  
+## Observações
 
-
-## 📱 Redes
-
-[![Instagram](https://img.shields.io/badge/Instagram-AutoBots-E4405F?style=for-the-badge&logo=instagram&logoColor=white)](https://www.instagram.com/autobots_obr/)
-
-
-## 🏆 A Competição – OBR
-
-A **Olimpíada Brasileira de Robótica (OBR)** desafia equipes a desenvolverem robôs totalmente autônomos capazes de:
-
-- 🚗 Percorrer trajetos predefinidos  
-- 🧱 Superar obstáculos  
-- 🎯 Executar missões com precisão  
-- 🛟 Realizar operações de resgate  
+- Os demais arquivos da pasta correspondem a versões de desenvolvimento, testes e experimentos realizados durante a temporada.
+- Para reproduzir o robô utilizado nas competições, utilize sempre o arquivo **FinalLego.ev3**.
+- Recomenda-se criar uma cópia do projeto antes de realizar modificações, preservando a versão oficial.
 
 ---
 
-## 💻 Sobre o Código
-
-Este repositório contém toda a lógica de controle responsável pelo funcionamento autônomo do robô durante a competição.
-
-O desenvolvimento foi realizado utilizando o **Lego MINDSTORMS EV3 Home Edition**, seguindo princípios de **engenharia de software aplicada à robótica**.
-
----
-
-## ⚙️ Funcionalidades do Sistema
-
-### 🚗 Controle de Movimento
-Algoritmos otimizados para controle de velocidade e direção, garantindo deslocamento preciso e estável.
-
-### 📏 Sensores de Refletância
-Processamento de dados para **seguimento de linha eficiente**, mantendo o robô no percurso correto.
-
-### 📡 Sensores Ultrassônicos
-Detecção de obstáculos em tempo real, permitindo tomadas de decisão rápidas e seguras.
-
-### 🛟 Missão de Resgate
-Implementação de estratégias para:
-- localizar vítimas (bolinhas)
-- coletar
-- posicionar em áreas seguras
-
-### 🔧 Otimização Contínua
-Ajustes constantes no código e nos parâmetros para maximizar desempenho e eficiência.
-
----
-
-## 🧠 Tecnologias Utilizadas
-
-- 🤖 Lego Mindstorms EV3  
-- 🧩 Programação visual (EV3 Home Edition)  
-- 🔌 Sensores (refletância e ultrassônico)  
-- ⚙️ Lógica de controle e automação  
-
----
-
-## 🎯 Objetivo
-
-Desenvolver soluções cada vez mais eficientes e inteligentes, evoluindo continuamente para alcançar alto desempenho nas competições da OBR.
-
----
-
-💡 _"Transformando código em movimento."_  
+**Equipe AutoBots**  
+**Olimpíada Brasileira de Robótica (OBR) – Temporada 2025**
