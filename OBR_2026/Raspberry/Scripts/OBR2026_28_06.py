@@ -4,6 +4,7 @@ import numpy as np
 import RPi.GPIO as GPIO
 from picamera import PiCamera
 from picamera.array import PiRGBArray
+import threading
 
 # Configuração do GPIO
 GPIO.setmode(GPIO.BCM)
@@ -201,7 +202,12 @@ def ler_distancia():
     duracao_pulso = pulso_fim - pulso_inicio
     distancia = duracao_pulso * 17150
     return round(distancia, 1)
-
+def thread_ultrassonico():
+    global distancia_global
+    while True:
+        distancia_global = ler_distancia()
+        time.sleep(0.05) # Lê 20 vezes por segundo, suficiente para o obstáculo
+        
 def desvio_obs(lado_desvio=1):
     motores_tras()
     time.sleep(0.4)
@@ -392,6 +398,8 @@ def seguir_linha():
             break
 
 try:
+    t = threading.Thread(target=thread_ultrassonico, daemon=True)
+    t.start()
     seguir_linha()
 except KeyboardInterrupt:
     motores_parar()
