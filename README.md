@@ -1,4 +1,6 @@
-<img src="assets/ObrLogo.png" style="width:100%;"/>
+<p align="center">
+<img src="assets/ObrLogo.png" style="width:40%;" height="200"/>
+</p>
 
 <div align="center">
   
