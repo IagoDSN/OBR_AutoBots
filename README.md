@@ -1,5 +1,5 @@
 <p align="center">
-<img src="assets/ObrLogo.png" style="width:40%;" height="200"/>
+<img src="assets/ObrLogo.png" style="width:100%;" height="350"/>
 </p>
 
 <div align="center">
