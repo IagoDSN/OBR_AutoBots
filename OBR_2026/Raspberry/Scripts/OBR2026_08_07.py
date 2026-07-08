@@ -45,28 +45,17 @@ GPIO.output(TRIG, GPIO.LOW)
 # Variável global que a Thread do ultrassônico vai atualizar
 distancia_global = 999.0
 
-# --- OTIMIZAÇÃO 2: Resolução reduzida (era 320x200) ---
 LARGURA = 160
 ALTURA = 120
-CENTRO_X = LARGURA // 2  # Ajustado automaticamente (era 160, agora 80)
+CENTRO_X = LARGURA // 2  
 
-# --- OTIMIZAÇÃO 1: Câmera em Thread separada usando imutils ---
-# O VideoStream lê os frames em segundo plano continuamente, então o loop
-# principal nunca fica "preso" esperando o próximo frame chegar da câmera.
 vs = VideoStream(src=0).start()
-time.sleep(2.0)  # Tempo para a thread encher o buffer e a câmera aquecer
+time.sleep(2.0)  
 
-# Define a resolução diretamente na captura interna usada pelo VideoStream
-# (necessário pois o parâmetro resolution do VideoStream só é aplicado
-# automaticamente quando usePiCamera=True)
 vs.stream.stream.set(cv2.CAP_PROP_FRAME_WIDTH, LARGURA)
 vs.stream.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, ALTURA)
 
-
 def ler_frame():
-    """Lê o frame mais recente da thread da câmera sem bloquear o loop.
-    Garante que o frame tenha exatamente LARGURA x ALTURA (segurança caso
-    o driver da câmera não respeite o set() acima)."""
     frame = vs.read()
     if frame is None:
         return None
@@ -74,11 +63,10 @@ def ler_frame():
         frame = cv2.resize(frame, (LARGURA, ALTURA))
     return frame
 
-
 # Variáveis do Controlador PID
-kp = 0.75  # Proporcional (força de correção do erro atual)
-ki = 0.01  # Integral (força de correção do erro acumulado)
-kd = 0.30  # Derivativo (suavização, prevê o futuro do erro)
+kp = 0.75  # Proporcional 
+ki = 0.01  # Integral (Atenção: talvez precise de reajuste por causa do dt)
+kd = 0.30  # Derivativo (Atenção: talvez precise de reajuste por causa do dt)
 ap = 1.0   # Ganho do ângulo da linha
 erro_anterior = 0
 soma_erro = 0
@@ -88,7 +76,6 @@ obs_perto = 20
 obs_longe = 60
 lado = 1  # 1 = esquerda, 0 = direita
 
-# --- OTIMIZAÇÃO 4: kernel de morfologia mantido, mas iterations passa de 2 para 1 ---
 kernel = np.ones((3, 3), np.uint8)
 
 # Limites HSV globais
@@ -103,16 +90,14 @@ HSV_VERMELHO_ALTO1 = np.array([10, 255, 255])
 HSV_VERMELHO_BAIXO2 = np.array([160, 100, 100])
 HSV_VERMELHO_ALTO2 = np.array([180, 255, 255])
 
-# --- OTIMIZAÇÃO 5: ROIs recalculadas proporcionalmente para 160x120 ---
-# (fator de escala: 0.5 na largura, 0.6 na altura, em relação ao 320x200 original)
-ROI_VERMELHO = (0, ALTURA, 50, 110)          # era hsv[0:200, 100:220]
-ROI_VERDE_ESQ = (90, 117, 0, 55)             # era hsv[150:195, 0:110]
-ROI_VERDE_DIR = (90, 117, 105, 160)          # era hsv[150:195, 210:320]
-ROI_VERDE_CENTRO = (90, 117, 58, 103)        # era hsv[150:195, 115:205]
-ROI_GATILHO = (72, 96, 15, 145)              # era hsv[120:160, 30:290]
-LIMITE_PIXELS_GATILHO = 1200                 # era 4000 (mesma proporção da área)
-LIMITE_ERRO_LINHA = 8                        # era 15 (proporcional à largura)
-
+# ROIs 
+ROI_VERMELHO = (0, ALTURA, 50, 110)          
+ROI_VERDE_ESQ = (90, 117, 0, 55)             
+ROI_VERDE_DIR = (90, 117, 105, 160)          
+ROI_VERDE_CENTRO = (90, 117, 58, 103)        
+ROI_GATILHO = (72, 96, 15, 145)              
+LIMITE_PIXELS_GATILHO = 1200                 
+LIMITE_ERRO_LINHA = 8                        
 
 # ==========================================
 # FUNÇÕES DE MOVIMENTAÇÃO
@@ -125,7 +110,6 @@ def motores_frente():
     pwm_esq.ChangeDutyCycle(vel_base)
     pwm_dir.ChangeDutyCycle(vel_base)
 
-
 def motores_tras():
     GPIO.output(IN1, GPIO.LOW)
     GPIO.output(IN2, GPIO.HIGH)
@@ -133,7 +117,6 @@ def motores_tras():
     GPIO.output(IN4, GPIO.HIGH)
     pwm_esq.ChangeDutyCycle(vel_base)
     pwm_dir.ChangeDutyCycle(vel_base)
-
 
 def motores_parar():
     GPIO.output(IN1, GPIO.LOW)
@@ -143,7 +126,6 @@ def motores_parar():
     pwm_esq.ChangeDutyCycle(0)
     pwm_dir.ChangeDutyCycle(0)
 
-
 def motores_virar_dir():
     GPIO.output(IN1, GPIO.HIGH)
     GPIO.output(IN2, GPIO.LOW)
@@ -151,7 +133,6 @@ def motores_virar_dir():
     GPIO.output(IN4, GPIO.HIGH)
     pwm_esq.ChangeDutyCycle(vel_base)
     pwm_dir.ChangeDutyCycle(vel_base)
-
 
 def motores_virar_esq():
     GPIO.output(IN1, GPIO.LOW)
@@ -161,7 +142,6 @@ def motores_virar_esq():
     pwm_esq.ChangeDutyCycle(vel_base)
     pwm_dir.ChangeDutyCycle(vel_base)
 
-
 def obs_esq():
     GPIO.output(IN1, GPIO.HIGH)
     GPIO.output(IN2, GPIO.LOW)
@@ -169,7 +149,6 @@ def obs_esq():
     GPIO.output(IN4, GPIO.LOW)
     pwm_esq.ChangeDutyCycle(obs_longe)
     pwm_dir.ChangeDutyCycle(obs_perto)
-
 
 def obs_dir():
     GPIO.output(IN1, GPIO.HIGH)
@@ -184,7 +163,6 @@ def obs_dir():
 # LEITURA ASSÍNCRONA DO ULTRASSÔNICO
 # ==========================================
 def ler_distancia_fisica():
-    """Função interna que faz o pulso físico do sensor."""
     GPIO.output(TRIG, GPIO.HIGH)
     time.sleep(0.00001)
     GPIO.output(TRIG, GPIO.LOW)
@@ -207,23 +185,25 @@ def ler_distancia_fisica():
     distancia = duracao_pulso * 17150
     return round(distancia, 1)
 
-
 def thread_ultrassonico():
-    """Roda infinitamente atualizando a variável global sem travar a câmera."""
     global distancia_global
     while True:
         distancia_global = ler_distancia_fisica()
-        time.sleep(0.05)  # Lê o sensor a cada 50ms
+        time.sleep(0.05)
 
 
 # ==========================================
 # FUNÇÕES DE LÓGICA DE PISTA (VERDE E DESVIO)
 # ==========================================
 def encontrar_linha():
-    """Gira procurando a linha para retomar o trajeto."""
     while True:
+        # --- NOVO: Parada de emergência dentro do loop infinito ---
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            raise KeyboardInterrupt  # Joga para o bloco try/except principal para desligar seguro
+
         img_atual = ler_frame()
         if img_atual is None:
+            time.sleep(0.005)  # --- NOVO: Evita travar a CPU em 100% (busy-waiting) ---
             continue
 
         hsv = cv2.cvtColor(img_atual, cv2.COLOR_BGR2HSV)
@@ -235,11 +215,11 @@ def encontrar_linha():
             (x_min, _), _, _ = blackbox
             erro = int(x_min - CENTRO_X)
 
-            # Se a linha estiver perto do centro, retoma o seguimento
             if abs(erro) < LIMITE_ERRO_LINHA:
                 motores_frente()
                 return True
-
+        
+        time.sleep(0.005)  # --- NOVO: Fôlego para o processador ---
 
 def esq_verde():
     motores_frente()
@@ -248,14 +228,12 @@ def esq_verde():
     time.sleep(0.5)
     encontrar_linha()
 
-
 def dir_verde():
     motores_frente()
     time.sleep(0.4)
     motores_virar_dir()
     time.sleep(0.5)
     encontrar_linha()
-
 
 def duplo_verde():
     motores_frente()
@@ -281,29 +259,44 @@ def desvio_obs(lado_desvio=1):
 
         # Lado Esquerdo
         while True:
+            # --- NOVO: Parada de emergência dentro do loop infinito ---
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                raise KeyboardInterrupt
+
             img_atual = ler_frame()
             if img_atual is None:
+                time.sleep(0.005)  # --- NOVO: Fôlego para o processador ---
                 continue
 
             hsv = cv2.cvtColor(img_atual, cv2.COLOR_BGR2HSV)
             Blackline = cv2.inRange(hsv, HSV_PRETO_BAIXO, HSV_PRETO_ALTO)
+            
+            # --- NOVO: Aplicando a mesma erosão no primeiro giro para evitar ruídos ---
+            Blackline = cv2.erode(Blackline, kernel, iterations=1)
+
             contours_blk, _ = cv2.findContours(Blackline, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             if len(contours_blk) > 0:
                 break
             obs_esq()
+            time.sleep(0.005)  # --- NOVO: Fôlego para o processador ---
 
         time.sleep(1.0)
 
         # Retomando
         while True:
+            # --- NOVO: Parada de emergência dentro do loop infinito ---
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                raise KeyboardInterrupt
+
             img_atual = ler_frame()
             if img_atual is None:
+                time.sleep(0.005)  # --- NOVO: Fôlego para o processador ---
                 continue
 
             hsv = cv2.cvtColor(img_atual, cv2.COLOR_BGR2HSV)
             Blackline = cv2.inRange(hsv, HSV_PRETO_BAIXO, HSV_PRETO_ALTO)
-            Blackline = cv2.erode(Blackline, kernel, iterations=1)  # era 2
+            Blackline = cv2.erode(Blackline, kernel, iterations=1) 
             contours_blk, _ = cv2.findContours(Blackline, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             if len(contours_blk) > 0:
@@ -314,6 +307,7 @@ def desvio_obs(lado_desvio=1):
                     motores_frente()
                     return True
             obs_dir()
+            time.sleep(0.005)  # --- NOVO: Fôlego para o processador ---
 
 
 # ==========================================
@@ -329,17 +323,26 @@ def seguir_linha():
     y1_gc, y2_gc, x1_gc, x2_gc = ROI_VERDE_CENTRO
     y1_g, y2_g, x1_g, x2_g = ROI_GATILHO
 
+    # --- NOVO: Inicia a contagem de tempo para o PID (dt) ---
+    tempo_anterior = time.time()
+
     while True:
+        # --- NOVO: Cálculo do tempo exato entre frames (dt) ---
+        tempo_atual = time.time()
+        dt = tempo_atual - tempo_anterior
+        if dt <= 0:
+            dt = 0.001  # Evita erro de divisão por zero caso seja rápido demais
+        tempo_anterior = tempo_atual
+
         image = ler_frame()
         if image is None:
-            continue  # Pula se falhar a leitura do frame
+            time.sleep(0.005)  # --- NOVO: Fôlego se pular frame
+            continue 
 
-        # 1. VERIFICAÇÃO DE OBSTÁCULO (Lê a variável da Thread instantaneamente)
+        # 1. VERIFICAÇÃO DE OBSTÁCULO 
         if distancia_global <= DISTANCIA_OBSTACULO:
             desvio_obs(lado)
             continue
-
-        # --- OTIMIZAÇÃO 3: corta a ROI em BGR primeiro, converte só o pedaço cortado ---
 
         # 2. VERIFICAÇÃO DE FIM DE PISTA (VERMELHO)
         roi_vermelho_bgr = image[y1_v:y2_v, x1_v:x2_v]
@@ -363,8 +366,8 @@ def seguir_linha():
         green_esq = cv2.inRange(parte_inferior_esq_hsv, HSV_VERDE_BAIXO, HSV_VERDE_ALTO)
         green_dir = cv2.inRange(parte_inferior_dir_hsv, HSV_VERDE_BAIXO, HSV_VERDE_ALTO)
 
-        green_esq = cv2.erode(green_esq, kernel, iterations=1)  # era 2
-        green_dir = cv2.erode(green_dir, kernel, iterations=1)  # era 2
+        green_esq = cv2.erode(green_esq, kernel, iterations=1) 
+        green_dir = cv2.erode(green_dir, kernel, iterations=1) 
 
         contornos_esq, _ = cv2.findContours(green_esq, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contornos_dir, _ = cv2.findContours(green_dir, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -373,7 +376,7 @@ def seguir_linha():
             parte_inferior_centro_bgr = image[y1_gc:y2_gc, x1_gc:x2_gc]
             parte_inferior_centro_hsv = cv2.cvtColor(parte_inferior_centro_bgr, cv2.COLOR_BGR2HSV)
             green_centro = cv2.inRange(parte_inferior_centro_hsv, HSV_VERDE_BAIXO, HSV_VERDE_ALTO)
-            green_centro = cv2.erode(green_centro, kernel, iterations=1)  # era 2
+            green_centro = cv2.erode(green_centro, kernel, iterations=1)
             contornos_centro, _ = cv2.findContours(green_centro, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
             if len(contornos_centro) == 0:
@@ -392,9 +395,6 @@ def seguir_linha():
             dir_verde()
             continue
 
-        # A partir daqui o frame inteiro em HSV é necessário (gatilho + PID da linha),
-        # então convertemos só agora — nunca pagamos essa conversão nos frames em
-        # que o robô já resolveu tudo com o verde/vermelho acima.
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
         # 4. GATILHO DE LINHA HORIZONTAL PRETA
@@ -409,7 +409,7 @@ def seguir_linha():
 
         # 5. CÁLCULO E CONTROLE PID DA LINHA PRETA
         Blackline = cv2.inRange(hsv, HSV_PRETO_BAIXO, HSV_PRETO_ALTO)
-        Blackline = cv2.erode(Blackline, kernel, iterations=1)  # era 2
+        Blackline = cv2.erode(Blackline, kernel, iterations=1)
 
         contours_blk, _ = cv2.findContours(Blackline, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         contours_blk_len = len(contours_blk)
@@ -441,24 +441,23 @@ def seguir_linha():
             error = int(x_min - CENTRO_X)
             ang = int(ang)
 
-            # --- INÍCIO DO CÁLCULO PID ---
+            # --- NOVO: CÁLCULO PID COM DT ---
             # 1. Proporcional: Corrige o erro atual
             P = error * kp
 
-            # 2. Integral: Corrige o erro acumulado (bom para curvas longas)
-            soma_erro += error
-            soma_erro = max(-500, min(500, soma_erro))  # Anti-windup para não estourar a variável
+            # 2. Integral: Corrige o erro acumulado (multiplicando pelo dt)
+            soma_erro += error * dt
+            soma_erro = max(-500, min(500, soma_erro))  
             I = soma_erro * ki
 
-            # 3. Derivativo: Suaviza a correção baseado na diferença do erro anterior
-            D = (error - erro_anterior) * kd
+            # 3. Derivativo: Suaviza a correção baseado na variação real no tempo
+            D = ((error - erro_anterior) / dt) * kd
 
             # Cálculo final combinando PID + Ganho de Ângulo
             calculo_steering = int(P + I + D + (ang * ap))
 
             # Atualiza o erro anterior para a próxima iteração
             erro_anterior = error
-            # --- FIM DO CÁLCULO PID ---
 
             # Aplica nos motores
             vel_esq = vel_base + calculo_steering
@@ -470,30 +469,23 @@ def seguir_linha():
             pwm_esq.ChangeDutyCycle(vel_esq)
             pwm_dir.ChangeDutyCycle(vel_dir)
         else:
-            # Se perder a linha de vista
             pwm_esq.ChangeDutyCycle(max(0, vel_base - 10))
             pwm_dir.ChangeDutyCycle(max(0, vel_base - 10))
 
-        # Parada de emergência apertando a tecla 'q' (Se rodar via terminal visual)
         if cv2.waitKey(1) & 0xFF == ord("q"):
-            motores_parar()
-            break
+            raise KeyboardInterrupt  # --- NOVO: Joga para o bloco principal fazer o desligamento correto ---
 
 
 # ==========================================
 # INICIALIZAÇÃO E TRATAMENTO DE ERROS
 # ==========================================
 try:
-    # Inicia a Thread do Ultrassônico ANTES de começar a andar
     t = threading.Thread(target=thread_ultrassonico, daemon=True)
     t.start()
-
-    # Inicia o controle de pista
     seguir_linha()
 except KeyboardInterrupt:
-    print("\nPrograma interrompido pelo usuário.")
+    print("\nPrograma interrompido pelo usuário ou parada de emergência acionada.")
 finally:
-    # Garante que os motores vão desligar e os pinos serão limpos
     motores_parar()
     vs.stop()
     cv2.destroyAllWindows()
