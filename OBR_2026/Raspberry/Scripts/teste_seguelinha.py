@@ -65,8 +65,8 @@ class Config:
     ENB_PIN: int = 19  # PWM
 
     # Câmera
-    FRAME_WIDTH: int = 640
-    FRAME_HEIGHT: int = 360
+    FRAME_WIDTH: int = 320
+    FRAME_HEIGHT: int = 180
     ROTATE_180: bool = True
 
     # Visão computacional (faixa HSV considerada "linha preta")
@@ -80,7 +80,7 @@ class Config:
     KP: float = 0.75  # Ganho Proporcional
     KD: float = 0.0   # Ganho Derivativo. Comece baixo (0.05-0.3) e suba aos
                        # poucos: deve reduzir oscilação sem criar tremores.
-    SETPOINT_X: int = 320  # centro da imagem (FRAME_WIDTH / 2)
+    SETPOINT_X: int = 160  # centro da imagem (FRAME_WIDTH / 2)
     BASE_SPEED: int = 60   # 0 a 100
 
     SHOW_PREVIEW: bool = True  # desligue se rodar sem monitor (headless) —
@@ -124,9 +124,6 @@ class MotorController:
             self.enb.value = speed_factor
             return
 
-        # min(abs(steering), 100) satura o efeito de picos grandes no termo D
-        # (ex.: ruído de detecção) — o pior caso vira uma curva bem fechada,
-        # nunca um valor inválido de PWM.
         steering_mod = (100 - min(abs(steering), 100)) / 100.0
 
         if steering > 0:
