@@ -1,0 +1,3 @@
+import seguelinha
+
+seguelinha.main()

@@ -1,36 +1,4 @@
-"""
-Robô Seguidor de Linha (Raspberry Pi + PiCamera2 + Ponte H)
-=============================================================
-
-Estrutura do arquivo:
-    1. Config          -> todas as constantes/parâmetros em um só lugar
-    2. MotorController -> controla a ponte H (liga/desliga, PWM, curva)
-    3. DetectionResult  -> pacote de retorno de um ciclo de detecção
-    4. LineDetector     -> processa o frame, calcula erro e o controle PD
-    5. Camera           -> thread de captura contínua da PiCamera2
-    6. main()           -> loop principal, junta tudo
-
-Correções feitas na v1 (reorganização):
-    - Import correto: `Picamera2` (era `PiCamera2`, causava ImportError)
-    - Rotação da câmera feita via `Transform`, não `set_property` (que não existe)
-    - Chamada de `Motor_Steer` corrigida (usava `speed=`, parâmetro inexistente)
-    - `np.int0` (removido no NumPy atual) trocado por `.astype(int)`
-    - Tratamento de erro na inicialização de câmera/motores
-    - Logging no lugar de prints soltos
-
-Evoluções da v2 (controle PD + otimização de memória):
-    - Controle Proporcional-Derivativo (KP + KD), não só P
-    - Guard contra "derivative kick": ao perder a linha, o histórico de erro
-      é zerado, evitando um pico artificial no termo D quando ela reaparece
-    - Todos os buffers de imagem (HSV, máscara, erosão, dilatação, preview)
-      são alocados UMA VEZ e reaproveitados a cada frame via `dst=`, em vez
-      de criar uma matriz nova na RAM ~30-60x por segundo
-    - `DetectionResult` (dataclass) no lugar de tupla solta — mais legível
-      para quem for mexer no código depois
-    - Overlay de depuração agora também mostra o valor de steering, útil
-      para calibrar KP/KD observando o robô em tempo real
-    - Removido `import time`, que não era usado em nenhum lugar
-"""
+from cfg import Config
 
 from __future__ import annotations
 
@@ -49,44 +17,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("line_follower")
 
 
-# ----------------------------------------------------------------------------
-# 1. CONFIGURAÇÃO — mude parâmetros aqui, sem precisar mexer no resto do código
-# ----------------------------------------------------------------------------
-@dataclass(frozen=True)
-class Config:
-    # Pinos - Motor A (Esquerdo)
-    IN1_PIN: int = 17
-    IN2_PIN: int = 27
-    ENA_PIN: int = 18  # PWM
-
-    # Pinos - Motor B (Direito)
-    IN3_PIN: int = 22
-    IN4_PIN: int = 23
-    ENB_PIN: int = 19  # PWM
-
-    # Câmera
-    FRAME_WIDTH: int = 320
-    FRAME_HEIGHT: int = 180
-    ROTATE_180: bool = True
-
-    # Visão computacional (faixa HSV considerada "linha preta")
-    HSV_LOWER: tuple = (0, 0, 0)
-    HSV_UPPER: tuple = (180, 255, 50)
-    ERODE_ITER: int = 5
-    DILATE_ITER: int = 9
-    OFF_BOTTOM_Y_THRESHOLD: int = 358  # ponto considerado "saindo pela base da imagem"
-
-    # Controle PD
-    KP: float = 0.75  # Ganho Proporcional
-    KD: float = 0.0   # Ganho Derivativo. Comece baixo (0.05-0.3) e suba aos
-                       # poucos: deve reduzir oscilação sem criar tremores.
-    SETPOINT_X: int = 160  # centro da imagem (FRAME_WIDTH / 2)
-    BASE_SPEED: int = 60   # 0 a 100
-
-    SHOW_PREVIEW: bool = True  # desligue se rodar sem monitor (headless) —
-                                # também evita alocar o buffer de preview
-
-
+cfg = Config()
 # ----------------------------------------------------------------------------
 # 2. CONTROLE DOS MOTORES (Ponte H)
 # ----------------------------------------------------------------------------
@@ -161,25 +92,7 @@ class DetectionResult:
 # 4. DETECÇÃO DA LINHA + CONTROLE PD
 # ----------------------------------------------------------------------------
 class LineDetector:
-    """
-    Processa cada frame e devolve a posição da linha + o comando de direção.
-
-    Controle implementado — PD (Proporcional-Derivativo):
-        derivativo = erro_atual - erro_anterior
-        steering   = (erro_atual * KP) + (derivativo * KD)
-
-    Se no futuro o robô apresentar erro residual constante em curvas longas
-    (algo que P e D sozinhos não corrigem), considere adicionar um termo
-    integral (KI) — com cuidado para limitar o acúmulo ("integral windup").
-
-    Otimização de memória: os buffers intermediários (HSV, máscara, erosão,
-    dilatação) são alocados UMA VEZ em __init__ e reaproveitados a cada frame
-    via o parâmetro `dst=` do OpenCV, em vez de criar uma matriz nova na RAM
-    a cada iteração do loop principal. Em um Raspberry Pi isso reduz o
-    trabalho do alocador de memória e a variação de latência (jitter) do
-    loop de controle — importante porque o termo D é sensível ao intervalo
-    de tempo entre frames.
-    """
+    
 
     def __init__(self, cfg: Config):
         self.cfg = cfg
@@ -390,7 +303,3 @@ def main() -> None:
         camera.stop()
         cv2.destroyAllWindows()
         log.info("Encerrado.")
-
-
-if __name__ == "__main__":
-    main()
