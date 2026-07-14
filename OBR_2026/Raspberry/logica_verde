@@ -1,0 +1,15 @@
+Crie um código em Python usando OpenCV e NumPy para detecção de marcadores verdes em uma pista de RoboCup Jr (categoria Rescue Line), com a seguinte lógica:
+
+Capture o frame da câmera do robô e converta de BGR para HSV.
+Aplique um inRange para segmentar a cor verde (marcador de desvio) e outro para segmentar a cor preta (linha de trajeto).
+Encontre os contornos externos da máscara verde.
+Para cada contorno encontrado, calcule o bounding box (x, y, w, h) e descarte blobs menores que 10x10 pixels (ruído).
+Para os blobs válidos, verifique uma faixa de 20 pixels imediatamente acima do bounding box na máscara preta:
+
+Se não houver preto nessa faixa, considere que o verde está fora da pista (ruído externo, reflexo, ou objeto do ambiente) e remova esses pixels da máscara verde.
+Se houver preto acima, considere que o verde está sobre a linha (marcador válido de desvio) e mantenha o contorno para processamento posterior.
+
+
+Com os contornos válidos, calcule o centróide de cada marcador verde e determine se ele está à esquerda ou à direita da linha preta, para decidir a direção do desvio do robô.
+O código deve ser modular (funções separadas para segmentação, filtragem e decisão de movimento), de fácil calibração dos valores de HSV, e otimizado para rodar em tempo real (ex: Raspberry Pi ou similar usado no robô).
+Adicione comentários explicando cada etapa, pensando em manutenção durante a competição.
