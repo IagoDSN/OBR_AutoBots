@@ -4,10 +4,11 @@ from multiprocessing import Process
 from control import control_loop
 from line_cam import line_cam_loop
 from mp_manager import *
+from led_branco import led_branco_loop  # Já importado
 
 def main():
     print("==========================================")
-    print("Iniciando Sistema: Line Cam + Control")
+    print("Iniciando Sistema: Line Cam + Control + LED")
     print("==========================================")
 
     # Configurações iniciais do gerenciador de variáveis compartilhadas
@@ -15,10 +16,11 @@ def main():
     run.value = True # Inicia permitindo que o robô ande
     terminate.value = False
 
-    # Define apenas os processos essenciais
+    # Adicionado o led_branco_loop na lista de processos ativos
     processes = [
         Process(target=line_cam_loop, args=(), name="Camera_Loop"),
-        Process(target=control_loop, args=(), name="Motor_Control_Loop")
+        Process(target=control_loop, args=(), name="Motor_Control_Loop"),
+        Process(target=led_branco_loop, args=(), name="LED_Branco_Loop")  # <--- Novo processo adicionado aqui
     ]
 
     # Inicia os processos paralelamente
@@ -43,7 +45,7 @@ def main():
         run.value = False
         time.sleep(0.5)
         
-        # Derruba os processos
+        # Derruba todos os processos (incluindo o do LED, desligando-o se o led_branco_loop tratar o KeyboardInterrupt/terminate)
         for process in processes:
             process.terminate()
             process.join()

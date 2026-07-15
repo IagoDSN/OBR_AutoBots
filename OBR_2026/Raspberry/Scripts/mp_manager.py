@@ -10,6 +10,7 @@ config_manager = ConfigManager('config.ini')
 manager = Manager()
 
 terminate = manager.Value("i", False)
+run = manager.Value("i", False) # Adicione esta linha!
 
 sensor_one = manager.Value("i", -2.0)  # Front Left
 sensor_two = manager.Value("i", -2.0)  # Front Right
