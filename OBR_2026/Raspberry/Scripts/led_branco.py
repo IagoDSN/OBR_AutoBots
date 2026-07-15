@@ -4,11 +4,12 @@ import neopixel_spi as neopixel
 from mp_manager import terminate  # Importa a variável compartilhada para saber quando parar
 
 # Configurações do NeoPixel
-NUM_PIXELS = 10                  # Altere para a quantidade real de LEDs que você tem
+NUM_PIXELS = 24
+
 PIXEL_ORDER = neopixel.GRB       # Ordem de cores do seu LED (geralmente GRB)
 
 # Inicializa o SPI no pino GPIO 10 (MOSI)
-spi = board.SPI()
+spi = board.SPI(board.SCK_1, board.MOSI_1)
 pixels = neopixel.NeoPixel_SPI(spi, NUM_PIXELS, pixel_order=PIXEL_ORDER, auto_write=False)
 
 def led_branco_loop():
