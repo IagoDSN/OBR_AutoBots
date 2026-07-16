@@ -5,7 +5,7 @@ from rpi_ws281x import PixelStrip, Color
 # ====== CONFIGURAÇÃO DO NEOPIXEL ======
 LED_COUNT = 24        # Número de LEDs no seu anel
 # ATENÇÃO: No Raspberry Pi, o pino mais estável para NeoPixel é o GPIO 18 (PWM)
-LED_PIN = 18          
+LED_PIN = 12       
 LED_FREQ_HZ = 800000  # Frequência do sinal (800khz)
 LED_DMA = 10          # Canal DMA para gerar o sinal
 LED_BRIGHTNESS = 150  # Brilho (0 a 255)
