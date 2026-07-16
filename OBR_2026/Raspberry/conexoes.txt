@@ -8,11 +8,14 @@ Led:
 DIN/dados: PINO FISICO 32
 
 PonteH:
-Motor A (lado esquerdo)
-IN1 → GPIO 17
-IN2 → GPIO 27
-ENA (PWM/velocidade) → GPIO 18
+Conexão dos motores (GPIO)
 
-IN3 → GPIO 22
-IN4 → GPIO 23
-ENB (PWM/velocidade) → GPIO 19
+Motor Direito:
+- IN1 (frente): GPIO 0
+- IN2 (ré): GPIO 1
+- ENA (PWM/velocidade): GPIO 12
+
+Motor Esquerdo:
+- IN3 (frente): GPIO 5
+- IN4 (ré): GPIO 6
+- ENB (PWM/velocidade): GPIO 13
