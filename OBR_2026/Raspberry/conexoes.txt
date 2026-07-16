@@ -4,6 +4,9 @@ ECHO → GPIO 6 (passando por divisor de tensão se for um HC-SR04)
 GND → qualquer pino GND
 VCC → 5 V
 
+Led:
+DIN/dados: PINO FISICO 32
+
 PonteH:
 Motor A (lado esquerdo)
 IN1 → GPIO 17
