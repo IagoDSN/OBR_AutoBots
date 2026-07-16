@@ -1,6 +1,0 @@
-# criar o control novamente, tirando tudo sobre resgate, e deixando o resto.
-obs: olhar claude (sepiniricardo)
-
-# ver sobre o led, qual porta usar.
-
-#conectar o led_branco_line, no main.
