@@ -1,16 +1,15 @@
-"""
-Versao FUNCIONAL (nao so debug) do pipeline de seguidor de linha usando
-camera USB, com a mesma arquitetura de producao do line_cam.py: processo
-dedicado de captura, frame compartilhado via shared_memory, e status/erro
-expostos via multiprocessing.Value para o processo de controle (control.py) ler.
-"""
+
 import cv2 as cv
 import numpy as np
 from multiprocessing import Process, Value, Lock
 from multiprocessing.shared_memory import SharedMemory
 import time
+from picamera2 import Picamera2
 
-CAMERA_INDEX = 0  # troque se tiver mais de uma camera USB conectada
+# ---- liga/desliga a parte visual e os prints -------------------------
+DEBUG = True  # True = mostra janela + prints | False = so roda o controle
+
+CAMERA_NUM = 0  # indice da camera na Picamera2 (0 = unica/primeira camera CSI)
 
 FRAME_WIDTH = 320
 FRAME_HEIGHT = 200
@@ -27,6 +26,10 @@ ROI_DIREITA_CIMA  = (260, 320, 0, 50)
 
 LINE_LOST = 0
 LINE_FOUND = 1
+
+# ---- parametros do controle de motor (ajuste/tune aqui) --------------
+KP = 0.6          # ganho proporcional -- TODO: tunar igual ja fez no control.py
+BASE_SPEED = 60.0  # velocidade base em % (0-100)
 
 
 def mascara_preto(frame_rgb):
@@ -84,20 +87,55 @@ def escolher_alvo(centro_cima, centro_esq, centro_dir, center_x):
     return None
 
 
+def calcular_comando_motor(status, erro, center_x):
+    """Transforma status/erro da linha em velocidade dos dois motores.
+    Controle proporcional simples -- se a linha estiver perdida, para
+    os motores (comportamento de seguranca em vez de manter o erro antigo)."""
+    if status == LINE_LOST:
+        return 0.0, 0.0
+
+    correcao = KP * (erro / center_x)  # normaliza o erro pela metade da largura
+    vel_esq = BASE_SPEED + correcao * BASE_SPEED
+    vel_dir = BASE_SPEED - correcao * BASE_SPEED
+
+    vel_esq = max(-100.0, min(100.0, vel_esq))
+    vel_dir = max(-100.0, min(100.0, vel_dir))
+    return vel_esq, vel_dir
+
+
+def enviar_para_motor(vel_esq, vel_dir):
+    """TODO: trocar esse corpo pela chamada real do driver de motor
+    (GPIO/PWM, biblioteca da ponte H, etc). Esse eh o ponto de integracao
+    com o hardware -- por enquanto nao faz nada."""
+    pass
+
+
 def capturar_e_processar(shm_name, frame_lock, novo_frame_flag, camera_ok,
                           line_status, line_angle, cx_alvo_v):
-    """Processo da camera: abre a webcam USB, captura, escreve na
+    """Processo da camera: abre a Picamera2, captura, escreve na
     shared_memory e calcula o erro/status pra quem estiver controlando
     os motores (control.py)."""
     shm = SharedMemory(name=shm_name)
     frame_buf = np.ndarray(FRAME_SHAPE, dtype=np.uint8, buffer=shm.buf)
 
-    cap = cv.VideoCapture(CAMERA_INDEX)
-    cap.set(cv.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
-    cap.set(cv.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+    try:
+    except ImportError as e:
+        print(f"ERRO: picamera2 nao esta instalado/disponivel ({e})")
+        camera_ok.value = 0
+        shm.close()
+        return
 
-    if not cap.isOpened():
-        camera_ok.value = 0  # avisa o processo pai que a camera nao abriu
+    try:
+        picam2 = Picamera2(camera_num=CAMERA_NUM)
+        config = picam2.create_video_configuration(
+            main={"size": (FRAME_WIDTH, FRAME_HEIGHT), "format": "RGB888"}
+        )
+        picam2.configure(config)
+        picam2.start()
+        time.sleep(0.3)  # da um tempinho pro sensor estabilizar exposicao/AWB
+    except Exception as e:
+        print(f"ERRO ao iniciar a Picamera2: {e}")
+        camera_ok.value = 0
         shm.close()
         return
 
@@ -106,14 +144,23 @@ def capturar_e_processar(shm_name, frame_lock, novo_frame_flag, camera_ok,
 
     try:
         while True:
-            ok, frame_bgr = cap.read()
-            if not ok:
-                camera_ok.value = 0  # avisa que a camera caiu no meio da execucao
+            try:
+                # Apesar do nome, o formato "RGB888" da Picamera2 entrega os
+                # bytes em ordem B,G,R (quirk conhecido do libcamera) -- por
+                # isso tratamos igual sairia de um cv.VideoCapture (BGR) e
+                # convertemos pra RGB do mesmo jeito.
+                frame_bgr = picam2.capture_array()
+            except Exception as e:
+                print(f"ERRO ao capturar frame da Picamera2: {e}")
+                camera_ok.value = 0
                 line_status.value = LINE_LOST
                 break
 
-            frame = cv.resize(frame_bgr, (FRAME_WIDTH, FRAME_HEIGHT))
-            frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+            h, w = frame_bgr.shape[:2]
+            if (w, h) != (FRAME_WIDTH, FRAME_HEIGHT):
+                frame_bgr = cv.resize(frame_bgr, (FRAME_WIDTH, FRAME_HEIGHT))
+
+            frame_rgb = cv.cvtColor(frame_bgr, cv.COLOR_BGR2RGB)
 
             with frame_lock:
                 frame_buf[:] = frame_rgb
@@ -133,7 +180,7 @@ def capturar_e_processar(shm_name, frame_lock, novo_frame_flag, camera_ok,
                 line_status.value = LINE_LOST
                 # mantem o ultimo line_angle.value ate a suavizacao temporal decidir
     finally:
-        cap.release()
+        picam2.stop()
         shm.close()
 
 
@@ -162,8 +209,9 @@ if __name__ == "__main__":
         time.sleep(0.05)
 
     if camera_ok.value == 0:
-        print(f"ERRO: nao consegui abrir a camera USB no indice {CAMERA_INDEX}")
-        print("Tente CAMERA_INDEX = 1, 2... se tiver mais de uma camera.")
+        print("ERRO: nao consegui iniciar a Picamera2.")
+        print("Verifique se a fita flex esta bem conectada, se 'picamera2' esta")
+        print("instalado e se nenhum outro processo esta usando a camera.")
         p.terminate()
         p.join()
         shm.close()
@@ -171,29 +219,42 @@ if __name__ == "__main__":
         raise SystemExit(1)
 
     frame_view = np.ndarray(FRAME_SHAPE, dtype=np.uint8, buffer=shm.buf)
+    center_x = FRAME_WIDTH // 2
 
     try:
         while True:
             if camera_ok.value == 0:
                 print("ERRO: a camera desconectou / parou de responder")
+                enviar_para_motor(0.0, 0.0)  # para os motores por seguranca
                 break
 
             if novo_frame_flag.value:
                 with frame_lock:
                     frame_local = frame_view.copy()
                     novo_frame_flag.value = 0
-                cv.imshow("Linha", cv.cvtColor(frame_local, cv.COLOR_RGB2BGR))
-                if cv.waitKey(1) & 0xFF == ord('q'):
-                    break
+                if DEBUG:
+                    cv.imshow("Linha", cv.cvtColor(frame_local, cv.COLOR_RGB2BGR))
+                    if cv.waitKey(1) & 0xFF == ord('q'):
+                        break
 
-            print(f"status={line_status.value} erro={line_angle.value:.1f} "
-                  f"cx_alvo={cx_alvo_v.value}")
+            # ---- aqui eh onde o erro vira comando de motor -----------
+            status = line_status.value
+            erro = line_angle.value
+            vel_esq, vel_dir = calcular_comando_motor(status, erro, center_x)
+            enviar_para_motor(vel_esq, vel_dir)
+
+            if DEBUG:
+                print(f"status={status} erro={erro:.1f} cx_alvo={cx_alvo_v.value} "
+                      f"vel_esq={vel_esq:.1f} vel_dir={vel_dir:.1f}")
+
             time.sleep(0.05)
     except KeyboardInterrupt:
         pass
     finally:
+        enviar_para_motor(0.0, 0.0)  # garante que os motores param ao sair
         p.terminate()
         p.join()
         shm.close()
         shm.unlink()
-        cv.destroyAllWindows()
+        if DEBUG:
+            cv.destroyAllWindows()
