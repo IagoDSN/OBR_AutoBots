@@ -1,15 +1,23 @@
 """
-Debug do pipeline de visao (deteccao de preto + ROI_CIMA/ESQUERDA_CIMA/DIREITA_CIMA)
-usando webcam USB. NAO usa multiprocessing/shared_memory -- e so pra calibrar
-threshold e posicao das ROIs num PC antes de rodar no Raspberry Pi com Picamera2.
+Versao FUNCIONAL (nao so debug) do pipeline de seguidor de linha usando
+camera USB, com a mesma arquitetura de producao do line_cam.py: processo
+dedicado de captura, frame compartilhado via shared_memory, e status/erro
+expostos via multiprocessing.Value para o processo de controle (control.py) ler.
 """
 import cv2 as cv
 import numpy as np
+from multiprocessing import Process, Value, Lock
+from multiprocessing.shared_memory import SharedMemory
+import time
 
 CAMERA_INDEX = 0  # troque se tiver mais de uma camera USB conectada
 
 FRAME_WIDTH = 320
 FRAME_HEIGHT = 200
+FRAME_SHAPE = (FRAME_HEIGHT, FRAME_WIDTH, 3)
+FRAME_NBYTES = int(np.prod(FRAME_SHAPE))  # uint8 -> 1 byte por elemento
+
+BLACK_THRESH = 60  # pixel eh "preto" se R, G e B estiverem todos abaixo disso
 MIN_CONTOUR_AREA = 80
 
 # (x1, x2, y1, y2) -- as 3 tiles ocupam a faixa y=0..50 lado a lado
@@ -19,44 +27,42 @@ ROI_DIREITA_CIMA  = (260, 320, 0, 50)
 
 LINE_LOST = 0
 LINE_FOUND = 1
-STATUS_NOME = {LINE_LOST: "PERDIDA", LINE_FOUND: "OK"}
 
 
-def mascara_preto(frame_rgb, thresh):
+def mascara_preto(frame_rgb):
     """255 onde os 3 canais (R,G,B) estao abaixo do threshold -> pixel preto."""
-    return np.all(frame_rgb < thresh, axis=2).astype(np.uint8) * 255
+    return np.all(frame_rgb < BLACK_THRESH, axis=2).astype(np.uint8) * 255
 
 
-def detectar_centro(frame, roi, thresh):
+def detectar_centro(frame, roi):
     x1, x2, y1, y2 = roi
     recorte = frame[y1:y2, x1:x2]
-    mask = mascara_preto(recorte, thresh)
+    mask = mascara_preto(recorte)
 
     contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     if not contours:
-        return None, mask
+        return None
 
     maior = max(contours, key=cv.contourArea)
     if cv.contourArea(maior) < MIN_CONTOUR_AREA:
-        return None, mask
+        return None
 
     M = cv.moments(maior)
     if M["m00"] == 0:
-        return None, mask
+        return None
 
     cx_local = int(M["m10"] / M["m00"])
     cy_local = int(M["m01"] / M["m00"])
     if mask[0, cx_local] == 255:
         cy_local = 0
 
-    return (cx_local + x1, cy_local + y1), mask
+    return (cx_local + x1, cy_local + y1)
 
 
 def escolher_alvo(centro_cima, centro_esq, centro_dir, center_x):
-    """Decide onde mirar com base nos 3 pontos de cima:
-    - preto so na esquerda (+ centro) -> ramal esquerda, mira nela
+    """- preto so na esquerda (+ centro) -> ramal esquerda, mira nela
     - preto so na direita  (+ centro) -> ramal direita, mira nela
-    - preto nos dois lados ao mesmo tempo -> cruzamento, segue reto (usa o centro)
+    - preto nos dois lados ao mesmo tempo -> cruzamento, segue reto
     - nenhum dos lados -> comportamento normal (centro)
     """
     cx_cima = centro_cima[0] if centro_cima is not None else None
@@ -68,120 +74,126 @@ def escolher_alvo(centro_cima, centro_esq, centro_dir, center_x):
     tem_dir = cx_dir is not None
 
     if tem_esq and tem_dir:
-        alvo_x = cx_cima if tem_cima else center_x
-        modo = "RETO (cruzamento)"
-    elif tem_cima and tem_esq:
-        alvo_x = cx_esq
-        modo = "RAMAL ESQUERDA"
-    elif tem_cima and tem_dir:
-        alvo_x = cx_dir
-        modo = "RAMAL DIREITA"
-    elif tem_cima:
-        alvo_x = cx_cima
-        modo = "NORMAL"
-    else:
-        alvo_x = None
-        modo = "PERDIDA"
-
-    return alvo_x, modo
+        return cx_cima if tem_cima else center_x
+    if tem_cima and tem_esq:
+        return cx_esq
+    if tem_cima and tem_dir:
+        return cx_dir
+    if tem_cima:
+        return cx_cima
+    return None
 
 
-def nothing(_):
-    pass
+def capturar_e_processar(shm_name, frame_lock, novo_frame_flag, camera_ok,
+                          line_status, line_angle, cx_alvo_v):
+    """Processo da camera: abre a webcam USB, captura, escreve na
+    shared_memory e calcula o erro/status pra quem estiver controlando
+    os motores (control.py)."""
+    shm = SharedMemory(name=shm_name)
+    frame_buf = np.ndarray(FRAME_SHAPE, dtype=np.uint8, buffer=shm.buf)
 
-
-def main():
     cap = cv.VideoCapture(CAMERA_INDEX)
-    if not cap.isOpened():
-        print(f"ERRO: nao consegui abrir a camera USB no indice {CAMERA_INDEX}")
-        print("Tente CAMERA_INDEX = 1, 2... se tiver mais de uma camera.")
-        return
-
     cap.set(cv.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
 
-    cv.namedWindow("Debug")
-    cv.createTrackbar("BLACK_THRESH", "Debug", 60, 255, nothing)
+    if not cap.isOpened():
+        camera_ok.value = 0  # avisa o processo pai que a camera nao abriu
+        shm.close()
+        return
 
+    camera_ok.value = 1
     center_x = FRAME_WIDTH // 2
-    y1c, y2c = ROI_CIMA[2], ROI_CIMA[3]
 
-    while True:
-        ok, frame_bgr = cap.read()
-        if not ok:
-            print("ERRO: falha ao ler frame da camera")
-            break
+    try:
+        while True:
+            ok, frame_bgr = cap.read()
+            if not ok:
+                camera_ok.value = 0  # avisa que a camera caiu no meio da execucao
+                line_status.value = LINE_LOST
+                break
 
-        # webcam entrega BGR; pipeline assume RGB (mesma convencao do Picamera2/RGB888)
-        frame = cv.resize(frame_bgr, (FRAME_WIDTH, FRAME_HEIGHT))
-        frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+            frame = cv.resize(frame_bgr, (FRAME_WIDTH, FRAME_HEIGHT))
+            frame_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
 
-        thresh = cv.getTrackbarPos("BLACK_THRESH", "Debug")
+            with frame_lock:
+                frame_buf[:] = frame_rgb
+                novo_frame_flag.value = 1
 
-        centro_cima, mask_cima = detectar_centro(frame_rgb, ROI_CIMA, thresh)
-        centro_esq, mask_esq = detectar_centro(frame_rgb, ROI_ESQUERDA_CIMA, thresh)
-        centro_dir, mask_dir = detectar_centro(frame_rgb, ROI_DIREITA_CIMA, thresh)
+            centro_cima = detectar_centro(frame_rgb, ROI_CIMA)
+            centro_esq = detectar_centro(frame_rgb, ROI_ESQUERDA_CIMA)
+            centro_dir = detectar_centro(frame_rgb, ROI_DIREITA_CIMA)
 
-        alvo_x, modo = escolher_alvo(centro_cima, centro_esq, centro_dir, center_x)
+            alvo_x = escolher_alvo(centro_cima, centro_esq, centro_dir, center_x)
 
-        if alvo_x is not None:
-            status = LINE_FOUND
-            erro = alvo_x - center_x
-        else:
-            status = LINE_LOST
-            erro = 0
-
-        # --- desenho de debug (em BGR, pra cv.imshow ficar com cor certa) ---
-        overlay = frame.copy()
-
-        rois = [
-            (ROI_ESQUERDA_CIMA, (0, 255, 255), "esq-cima"),
-            (ROI_CIMA, (255, 0, 0), "cima"),
-            (ROI_DIREITA_CIMA, (255, 0, 255), "dir-cima"),
-        ]
-        for (x1, x2, y1, y2), cor, nome in rois:
-            cv.rectangle(overlay, (x1, y1), (x2, y2), cor, 1)
-            cv.putText(overlay, nome, (x1 + 2, y1 + 12),
-                       cv.FONT_HERSHEY_SIMPLEX, 0.35, cor, 1)
-
-        # linha vertical no meio da tela (referencia do "erro zero")
-        cv.line(overlay, (center_x, 0), (center_x, FRAME_HEIGHT), (200, 200, 200), 1)
-
-        if centro_cima is not None:
-            cv.circle(overlay, centro_cima, 3, (255, 0, 0), -1)
-        if centro_esq is not None:
-            cv.circle(overlay, centro_esq, 3, (0, 255, 255), -1)
-        if centro_dir is not None:
-            cv.circle(overlay, centro_dir, 3, (255, 0, 255), -1)
-
-        if alvo_x is not None:
-            alvo_pt = (alvo_x, y1c + (y2c - y1c) // 2)
-            cv.circle(overlay, alvo_pt, 6, (0, 0, 255), 2)
-            cv.line(overlay, (center_x, alvo_pt[1]), alvo_pt, (0, 200, 255), 1)
-
-        cv.putText(overlay, f"status: {STATUS_NOME[status]}", (5, FRAME_HEIGHT - 34),
-                   cv.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-        cv.putText(overlay, f"modo: {modo}", (5, FRAME_HEIGHT - 20),
-                   cv.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-        cv.putText(overlay, f"erro: {erro} px", (5, FRAME_HEIGHT - 6),
-                   cv.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-
-        cv.imshow("Debug", overlay)
-
-        # janela extra com as mascaras de preto das 3 ROIs (util pra calibrar o threshold)
-        mask_view = np.zeros((FRAME_HEIGHT, FRAME_WIDTH), dtype=np.uint8)
-        mask_view[y1c:y2c, ROI_ESQUERDA_CIMA[0]:ROI_ESQUERDA_CIMA[1]] = mask_esq
-        mask_view[y1c:y2c, ROI_CIMA[0]:ROI_CIMA[1]] = mask_cima
-        mask_view[y1c:y2c, ROI_DIREITA_CIMA[0]:ROI_DIREITA_CIMA[1]] = mask_dir
-        cv.imshow("Mascara preto (esq-cima / cima / dir-cima)", mask_view)
-
-        key = cv.waitKey(1) & 0xFF
-        if key == ord('q'):
-            break
-
-    cap.release()
-    cv.destroyAllWindows()
+            if alvo_x is not None:
+                line_status.value = LINE_FOUND
+                line_angle.value = alvo_x - center_x  # erro em pixels ate o meio da tela
+                cx_alvo_v.value = alvo_x
+            else:
+                line_status.value = LINE_LOST
+                # mantem o ultimo line_angle.value ate a suavizacao temporal decidir
+    finally:
+        cap.release()
+        shm.close()
 
 
 if __name__ == "__main__":
-    main()
+    shm = SharedMemory(create=True, size=FRAME_NBYTES)
+    frame_lock = Lock()
+    novo_frame_flag = Value('i', 0)
+    camera_ok = Value('i', 0)
+
+    line_status = Value('i', LINE_LOST)
+    line_angle = Value('d', 0.0)  # erro em pixels (nao angulo em graus)
+    cx_alvo_v = Value('i', -1)
+
+    p = Process(
+        target=capturar_e_processar,
+        args=(shm.name, frame_lock, novo_frame_flag, camera_ok,
+              line_status, line_angle, cx_alvo_v),
+        daemon=True
+    )
+    p.start()
+
+    # espera o processo filho tentar abrir a camera antes de seguir
+    for _ in range(50):  # ate ~2.5s
+        if camera_ok.value != 0:
+            break
+        time.sleep(0.05)
+
+    if camera_ok.value == 0:
+        print(f"ERRO: nao consegui abrir a camera USB no indice {CAMERA_INDEX}")
+        print("Tente CAMERA_INDEX = 1, 2... se tiver mais de uma camera.")
+        p.terminate()
+        p.join()
+        shm.close()
+        shm.unlink()
+        raise SystemExit(1)
+
+    frame_view = np.ndarray(FRAME_SHAPE, dtype=np.uint8, buffer=shm.buf)
+
+    try:
+        while True:
+            if camera_ok.value == 0:
+                print("ERRO: a camera desconectou / parou de responder")
+                break
+
+            if novo_frame_flag.value:
+                with frame_lock:
+                    frame_local = frame_view.copy()
+                    novo_frame_flag.value = 0
+                cv.imshow("Linha", cv.cvtColor(frame_local, cv.COLOR_RGB2BGR))
+                if cv.waitKey(1) & 0xFF == ord('q'):
+                    break
+
+            print(f"status={line_status.value} erro={line_angle.value:.1f} "
+                  f"cx_alvo={cx_alvo_v.value}")
+            time.sleep(0.05)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        p.terminate()
+        p.join()
+        shm.close()
+        shm.unlink()
+        cv.destroyAllWindows()
