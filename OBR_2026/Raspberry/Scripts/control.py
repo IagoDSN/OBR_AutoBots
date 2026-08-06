@@ -1,5 +1,5 @@
 import time
-from motor_bts7960 import PonteHBTS7960
+from motores import PonteHBTS7960
 import mp_manager as mgr
 from constants import FRAME_WIDTH, LINE_LOST
 
