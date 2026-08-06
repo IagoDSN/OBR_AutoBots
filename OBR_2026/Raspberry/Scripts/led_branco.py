@@ -1,40 +1,47 @@
 import time
-import board
-import neopixel_spi as neopixel
-from mp_manager import terminate  # Importa a variável compartilhada para saber quando parar
+import serial
 
-# Configurações do NeoPixel
-NUM_PIXELS = 24
+import mp_manager as mgr
 
-PIXEL_ORDER = neopixel.GRB       # Ordem de cores do seu LED (geralmente GRB)
+PORTA_SERIAL = "/dev/ttyACM0"   # confira com `ls /dev/tty*` antes/depois de plugar o Arduino
+BAUD_RATE = 9600
 
-# Inicializa o SPI no pino GPIO 10 (MOSI)
-spi = board.SPI(board.SCK_1, board.MOSI_1)
-pixels = neopixel.NeoPixel_SPI(spi, NUM_PIXELS, pixel_order=PIXEL_ORDER, auto_write=False)
+CMD_LIGAR = b"1"
+CMD_DESLIGAR = b"0"
+
 
 def led_branco_loop():
-    print("[LED] Processo de LED iniciado. LEDs acesos em BRANCO.")
+    print("[LED] Processo de LED iniciado.")
     try:
-        # Em vez de True, usamos a variável de controle compartilhada do robô
-        while not terminate.value:
-            pixels.fill((255, 255, 255))
-            pixels.show()
-            time.sleep(0.5)  # Intervalo para não sobrecarregar o processador
-            
+        arduino = serial.Serial(PORTA_SERIAL, BAUD_RATE, timeout=1)
+        time.sleep(2)  # Arduino reseta ao abrir a serial; espera estabilizar
+    except serial.SerialException as e:
+        print(f"[LED] Não consegui abrir a serial com o Arduino: {e}")
+        return
+
+    try:
+        arduino.write(CMD_LIGAR)
+        print("[LED] Comando LIGAR enviado ao Arduino.")
+
+        while not mgr.terminate.is_set():
+            # reenvia como "heartbeat": se o Arduino resetar no meio da prova,
+            # ele volta pro estado ligado no próximo ciclo
+            arduino.write(CMD_LIGAR)
+            time.sleep(0.5)
+
     except Exception as e:
         print(f"[LED] Ocorreu um erro no loop do LED: {e}")
-        
+
     finally:
-        # Este bloco SEMPRE rodará quando o loop acima terminar (ao mudar 'terminate' para True)
         print("[LED] Desligando os LEDs com segurança...")
-        pixels.fill((0, 0, 0))
-        pixels.show()
+        try:
+            arduino.write(CMD_DESLIGAR)
+            time.sleep(0.05)
+            arduino.write(CMD_DESLIGAR)  # manda 2x — serial pode perder byte
+        finally:
+            arduino.close()
         print("[LED] LEDs desligados.")
 
-# IMPORTANTE: Este bloco garante que o loop só roda sozinho se executares
-# diretamente "python3 led_branco.py". Quando importado pelo main.py, ele NÃO roda.
+
 if __name__ == "__main__":
-    try:
-        led_branco_loop()
-    except KeyboardInterrupt:
-        pass
+    led_branco_loop()

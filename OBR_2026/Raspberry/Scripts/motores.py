@@ -1,49 +1,36 @@
-import time
 from gpiozero import Motor, DigitalOutputDevice
-from line_cam import calcular_comando_motor, FRAME_WIDTH, DEBUG
-
-CONTROL_HZ = 20  # mesmo ritmo do line_cam (sleep de 0.05s)
-
-# --- Pinos dos motores (BCM) — confira contra sua fiacao real ---
-PIN_DIR_FORWARD, PIN_DIR_BACKWARD, PIN_DIR_EN = 18, 19, 23
-PIN_ESQ_FORWARD, PIN_ESQ_BACKWARD, PIN_ESQ_EN = 20, 21, 24
 
 
-def controlar_motores(camera_ok, line_status, line_angle, stop_flag):
-    """Processo de controle: le status/erro compartilhados pelo line_cam
-    e aciona os motores. Motor/DigitalOutputDevice sao criados aqui dentro
-    (nao no topo do modulo) pra nao serem reservados pelo processo pai
-    antes do fork."""
-    motor_dir = Motor(forward=PIN_DIR_FORWARD, backward=PIN_DIR_BACKWARD)
-    en_dir = DigitalOutputDevice(PIN_DIR_EN, initial_value=True)
+class PonteHBTS7960:
+    """Um motor controlado por uma ponte BTS7960.
 
-    motor_esq = Motor(forward=PIN_ESQ_FORWARD, backward=PIN_ESQ_BACKWARD)
-    en_esq = DigitalOutputDevice(PIN_ESQ_EN, initial_value=True)
+    RPWM/LPWM -> velocidade e sentido (via gpiozero.Motor)
+    R_EN/L_EN -> habilitação da ponte; ficam em HIGH e servem
+                 como trava de emergência
+    """
 
-    center_x = FRAME_WIDTH // 2
+    def __init__(self, pino_rpwm, pino_lpwm, pino_ren, pino_len):
+        self._motor = Motor(forward=pino_rpwm, backward=pino_lpwm, pwm=True)
+        self._ren = DigitalOutputDevice(pino_ren, initial_value=True)
+        self._len = DigitalOutputDevice(pino_len, initial_value=True)
 
-    def aplicar_comando(vel_esq_pct, vel_dir_pct):
-        motor_esq.value = max(-1.0, min(1.0, vel_esq_pct / 100.0))
-        motor_dir.value = max(-1.0, min(1.0, vel_dir_pct / 100.0))
+    def set_velocidade(self, velocidade_pct):
+        """velocidade_pct: -100 (ré máxima) a 100 (frente máxima)"""
+        valor = max(-100.0, min(100.0, velocidade_pct)) / 100.0
+        self._motor.value = valor
 
-    def parar_motores():
-        motor_esq.stop()
-        motor_dir.stop()
+    def parar(self):
+        self._motor.stop()
 
-    try:
-        while not stop_flag.value:
-            if camera_ok.value == 0:
-                break
+    def desabilitar(self):
+        self._ren.off()
+        self._len.off()
 
-            status = line_status.value
-            erro = line_angle.value
-            vel_esq, vel_dir = calcular_comando_motor(status, erro, center_x)
-            aplicar_comando(vel_esq, vel_dir)
+    def habilitar(self):
+        self._ren.on()
+        self._len.on()
 
-            if DEBUG:
-                print(f"[control] status={status} erro={erro:.1f} "
-                      f"vel_esq={vel_esq:.1f} vel_dir={vel_dir:.1f}")
-
-            time.sleep(1.0 / CONTROL_HZ)
-    finally:
-        parar_motores()
+    def fechar(self):
+        self._motor.close()
+        self._ren.close()
+        self._len.close()

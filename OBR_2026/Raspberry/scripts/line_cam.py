@@ -1,17 +1,14 @@
 import cv2 as cv
 import numpy as np
-from multiprocessing import Process, Value, Lock
-from multiprocessing.shared_memory import SharedMemory
 import time
 from picamera2 import Picamera2
+from multiprocessing.shared_memory import SharedMemory
+
+import mp_manager as mgr
+from constants import FRAME_WIDTH, FRAME_HEIGHT, FRAME_SHAPE, LINE_LOST, LINE_FOUND
 
 DEBUG = True
 CAMERA_NUM = 0
-
-FRAME_WIDTH = 320
-FRAME_HEIGHT = 200
-FRAME_SHAPE = (FRAME_HEIGHT, FRAME_WIDTH, 3)
-FRAME_NBYTES = int(np.prod(FRAME_SHAPE))
 
 BLACK_THRESH = 60
 MIN_CONTOUR_AREA = 80
@@ -19,12 +16,6 @@ MIN_CONTOUR_AREA = 80
 ROI_ESQUERDA_CIMA = (0,   60,  0, 50)
 ROI_CIMA          = (60, 260,  0, 50)
 ROI_DIREITA_CIMA  = (260, 320, 0, 50)
-
-LINE_LOST = 0
-LINE_FOUND = 1
-
-KP = 0.6
-BASE_SPEED = 60.0
 
 
 def mascara_preto(frame_rgb):
@@ -57,11 +48,6 @@ def detectar_centro(frame, roi):
 
 
 def escolher_alvo(centro_cima, centro_esq, centro_dir, center_x):
-    """- preto so na esquerda (+ centro) -> ramal esquerda, mira nela
-    - preto so na direita  (+ centro) -> ramal direita, mira nela
-    - preto nos dois lados ao mesmo tempo -> cruzamento, segue reto
-    - nenhum dos lados -> comportamento normal (centro)
-    """
     cx_cima = centro_cima[0] if centro_cima is not None else None
     cx_esq = centro_esq[0] if centro_esq is not None else None
     cx_dir = centro_dir[0] if centro_dir is not None else None
@@ -81,22 +67,8 @@ def escolher_alvo(centro_cima, centro_esq, centro_dir, center_x):
     return None
 
 
-def calcular_comando_motor(status, erro, center_x):
-    if status == LINE_LOST:
-        return 0.0, 0.0
-
-    correcao = KP * (erro / center_x)
-    vel_esq = BASE_SPEED + correcao * BASE_SPEED
-    vel_dir = BASE_SPEED - correcao * BASE_SPEED
-
-    vel_esq = max(-100.0, min(100.0, vel_esq))
-    vel_dir = max(-100.0, min(100.0, vel_dir))
-    return vel_esq, vel_dir
-
-
-def capturar_e_processar(shm_name, frame_lock, novo_frame_flag, camera_ok,
-                          line_status, line_angle, cx_alvo_v):
-    shm = SharedMemory(name=shm_name)
+def capturar_e_processar():
+    shm = SharedMemory(name=mgr.shm.name)
     frame_buf = np.ndarray(FRAME_SHAPE, dtype=np.uint8, buffer=shm.buf)
 
     try:
@@ -109,21 +81,21 @@ def capturar_e_processar(shm_name, frame_lock, novo_frame_flag, camera_ok,
         time.sleep(0.3)
     except Exception as e:
         print(f"ERRO ao iniciar a Picamera2: {e}")
-        camera_ok.value = 0
+        mgr.camera_ok.value = 0
         shm.close()
         return
 
-    camera_ok.value = 1
+    mgr.camera_ok.value = 1
     center_x = FRAME_WIDTH // 2
 
     try:
-        while True:
+        while not mgr.terminate.is_set():
             try:
                 frame_bgr = picam2.capture_array()
             except Exception as e:
                 print(f"ERRO ao capturar frame da Picamera2: {e}")
-                camera_ok.value = 0
-                line_status.value = LINE_LOST
+                mgr.camera_ok.value = 0
+                mgr.line_status.value = LINE_LOST
                 break
 
             h, w = frame_bgr.shape[:2]
@@ -132,9 +104,9 @@ def capturar_e_processar(shm_name, frame_lock, novo_frame_flag, camera_ok,
 
             frame_rgb = cv.cvtColor(frame_bgr, cv.COLOR_BGR2RGB)
 
-            with frame_lock:
+            with mgr.frame_lock:
                 frame_buf[:] = frame_rgb
-                novo_frame_flag.value = 1
+                mgr.novo_frame_flag.value = 1
 
             centro_cima = detectar_centro(frame_rgb, ROI_CIMA)
             centro_esq = detectar_centro(frame_rgb, ROI_ESQUERDA_CIMA)
@@ -143,11 +115,12 @@ def capturar_e_processar(shm_name, frame_lock, novo_frame_flag, camera_ok,
             alvo_x = escolher_alvo(centro_cima, centro_esq, centro_dir, center_x)
 
             if alvo_x is not None:
-                line_status.value = LINE_FOUND
-                line_angle.value = alvo_x - center_x
-                cx_alvo_v.value = alvo_x
+                mgr.line_status.value = LINE_FOUND
+                mgr.line_angle.value = alvo_x - center_x
+                mgr.cx_alvo_v.value = alvo_x
             else:
-                line_status.value = LINE_LOST
+                mgr.line_status.value = LINE_LOST
     finally:
+        mgr.camera_ok.value = 0
         picam2.stop()
         shm.close()
