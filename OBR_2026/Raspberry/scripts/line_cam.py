@@ -88,9 +88,7 @@ def escolher_alvo(centro_cima, centro_esq, centro_dir, center_x):
 
 
 def calcular_comando_motor(status, erro, center_x):
-    """Transforma status/erro da linha em velocidade dos dois motores.
-    Controle proporcional simples -- se a linha estiver perdida, para
-    os motores (comportamento de seguranca em vez de manter o erro antigo)."""
+   
     if status == LINE_LOST:
         return 0.0, 0.0
 
@@ -101,13 +99,6 @@ def calcular_comando_motor(status, erro, center_x):
     vel_esq = max(-100.0, min(100.0, vel_esq))
     vel_dir = max(-100.0, min(100.0, vel_dir))
     return vel_esq, vel_dir
-
-
-def enviar_para_motor(vel_esq, vel_dir):
-    """TODO: trocar esse corpo pela chamada real do driver de motor
-    (GPIO/PWM, biblioteca da ponte H, etc). Esse eh o ponto de integracao
-    com o hardware -- por enquanto nao faz nada."""
-    pass
 
 
 def capturar_e_processar(shm_name, frame_lock, novo_frame_flag, camera_ok,
@@ -241,7 +232,6 @@ if __name__ == "__main__":
             status = line_status.value
             erro = line_angle.value
             vel_esq, vel_dir = calcular_comando_motor(status, erro, center_x)
-            enviar_para_motor(vel_esq, vel_dir)
 
             if DEBUG:
                 print(f"status={status} erro={erro:.1f} cx_alvo={cx_alvo_v.value} "
