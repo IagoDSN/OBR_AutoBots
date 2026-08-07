@@ -67,9 +67,30 @@ def escolher_alvo(centro_cima, centro_esq, centro_dir, center_x):
     return None
 
 
+def _desenhar_debug(frame_rgb, roi, centro, cor):
+    """Desenha o retângulo da ROI e o centro detectado (se houver) direto no frame."""
+    x1, x2, y1, y2 = roi
+    cv.rectangle(frame_rgb, (x1, y1), (x2, y2), cor, 1)
+    if centro is not None:
+        cv.circle(frame_rgb, centro, 4, cor, -1)
+
+
+def _iniciar_debug_window():
+    """Tenta abrir a janela de debug. Se não houver display (modo headless),
+    desativa o debug em vez de travar o processo com erro de X11."""
+    try:
+        cv.namedWindow("line_cam debug", cv.WINDOW_NORMAL)
+        return True
+    except cv.error as e:
+        print(f"[line_cam] DEBUG desativado (sem display disponível): {e}")
+        return False
+
+
 def capturar_e_processar():
     shm = SharedMemory(name=mgr.shm.name)
     frame_buf = np.ndarray(FRAME_SHAPE, dtype=np.uint8, buffer=shm.buf)
+
+    debug_ativo = DEBUG and _iniciar_debug_window()
 
     try:
         picam2 = Picamera2(camera_num=CAMERA_NUM)
@@ -120,7 +141,29 @@ def capturar_e_processar():
                 mgr.cx_alvo_v.value = alvo_x
             else:
                 mgr.line_status.value = LINE_LOST
+
+            if debug_ativo:
+                frame_debug = frame_rgb.copy()
+                _desenhar_debug(frame_debug, ROI_CIMA, centro_cima, (0, 255, 0))
+                _desenhar_debug(frame_debug, ROI_ESQUERDA_CIMA, centro_esq, (255, 0, 0))
+                _desenhar_debug(frame_debug, ROI_DIREITA_CIMA, centro_dir, (0, 0, 255))
+                if alvo_x is not None:
+                    cv.line(frame_debug, (center_x, 0), (center_x, FRAME_HEIGHT), (255, 255, 0), 1)
+                    cv.circle(frame_debug, (alvo_x, 10), 5, (0, 255, 255), -1)
+
+                status_txt = "LINE_FOUND" if alvo_x is not None else "LINE_LOST"
+                cv.putText(frame_debug, status_txt, (5, FRAME_HEIGHT - 8),
+                           cv.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+
+                cv.imshow("line_cam debug", cv.cvtColor(frame_debug, cv.COLOR_RGB2BGR))
+                # waitKey(1) é obrigatório para o imshow atualizar a janela;
+                # também permite fechar o debug apertando 'q' sem matar o processo inteiro
+                if cv.waitKey(1) & 0xFF == ord('q'):
+                    debug_ativo = False
+                    cv.destroyAllWindows()
     finally:
         mgr.camera_ok.value = 0
+        if debug_ativo:
+            cv.destroyAllWindows()
         picam2.stop()
         shm.close()
