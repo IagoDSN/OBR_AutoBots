@@ -1,5 +1,5 @@
 import time
-from multiprocessing import Process, set_start_method
+from multiprocessing import set_start_method, get_start_method, Process
 
 import mp_manager as mgr
 from line_cam import capturar_e_processar
@@ -8,7 +8,8 @@ from led_branco import led_branco_loop
 
 
 def main():
-    set_start_method("fork")
+    if get_start_method(allow_none=True) != "fork":
+        set_start_method("fork")
 
     proc_camera = Process(target=capturar_e_processar, name="line_cam")
     proc_motores = Process(target=loop_controle, name="control")
