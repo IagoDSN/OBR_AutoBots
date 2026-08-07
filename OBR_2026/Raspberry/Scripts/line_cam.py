@@ -13,9 +13,9 @@ CAMERA_NUM = 0
 BLACK_THRESH = 60
 MIN_CONTOUR_AREA = 80
 
-ROI_ESQUERDA_CIMA = (0,   60,  0, 80)
-ROI_CIMA          = (60, 260,  0, 80)
-ROI_DIREITA_CIMA  = (260, 320, 0, 80)
+ROI_ESQUERDA_CIMA = (0,   60,  0, 50)
+ROI_CIMA          = (60, 260,  0, 50)
+ROI_DIREITA_CIMA  = (260, 320, 0, 50)
 
 
 def mascara_preto(frame_rgb):
