@@ -1,3 +1,8 @@
+# Pi 5 precisa do backend lgpio; forçar ANTES de criar Motor/DigitalOutputDevice
+from gpiozero import Device
+from gpiozero.pins.lgpio import LGPIOFactory
+Device.pin_factory = LGPIOFactory()
+
 from gpiozero import Motor, DigitalOutputDevice
 
 
